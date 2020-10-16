@@ -12,6 +12,8 @@
 #include <crypto/cipher.h>
 #elif CONFIG_BT_CTLR
 #include <bluetooth/crypto.h>
+#elif defined(CONFIG_SOC_POSIX)
+
 #else
 #error No crypto suite for Zigbee stack has been selected
 #endif

@@ -139,8 +139,22 @@ elseif (DEFINED CONFIG_SOC_NRF5340_CPUAPP)
   # See nRF5340 Product Specification, chapter Application Core -> ... "UICR"
   set(otp_start_addr "0xff8100")
   set(otp_size 764)  # 191 * 4
+elseif (DEFINED CONFIG_SOC_POSIX)
+  # assign some stubbed values
+  set(otp_start_addr "0xff8100")
+  set(otp_size 764)  # 191 * 4
 endif()
 
+
+if (DEFINED CONFIG_SOC_POSIX)
+add_region(
+  NAME sram_primary
+  SIZE 160000
+  BASE 0
+  PLACEMENT complex
+  DYNAMIC_PARTITION sram_primary
+  )
+else()
 add_region(
   NAME sram_primary
   SIZE ${CONFIG_PM_SRAM_SIZE}
@@ -148,6 +162,8 @@ add_region(
   PLACEMENT complex
   DYNAMIC_PARTITION sram_primary
   )
+
+endif()
 
 math(EXPR flash_size "${CONFIG_FLASH_SIZE} * 1024" OUTPUT_FORMAT HEXADECIMAL)
 

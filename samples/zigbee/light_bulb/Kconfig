@@ -1,0 +1,23 @@
+#
+# Copyright (c) 2018 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
+#
+
+
+config FLASH_SIZE
+	int "Flash primary size"
+	default 4096
+	depends on SOC_POSIX
+
+config FLASH_BASE_ADDRESS
+	hex "Flash primary base address"
+	default 0x00
+	depends on SOC_POSIX
+
+config NET_CONFIG_IEEE802154_DEV_NAME
+	string "Name of ieee 802154 radio_api device"
+	default "natpos_802154"
+	depends on SOC_POSIX
+
+source "Kconfig.zephyr"

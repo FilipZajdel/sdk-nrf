@@ -12,7 +12,11 @@
 #include <zb_types.h>
 
 #define ALARM_CHANNEL_ID  0
+#ifdef CONFIG_SOC_POSIX
+#define TIMER_INSTANCE    DT_LABEL(DT_NODELABEL(counter0))
+#else
 #define TIMER_INSTANCE    DT_LABEL(DT_NODELABEL(timer3))
+#endif
 
 typedef struct {
 	const struct device *device;

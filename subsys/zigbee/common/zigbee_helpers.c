@@ -11,7 +11,12 @@
 
 #include <dk_buttons_and_leds.h>
 #include <logging/log.h>
+#ifndef CONFIG_SOC_POSIX
 #include <hal/nrf_power.h>
+#else
+#define dk_set_led_on(...)
+#define dk_set_led_off(...)
+#endif
 
 #include "zigbee_helpers.h"
 #include <zb_error_handler.h>

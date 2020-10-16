@@ -11,7 +11,18 @@
 #include <zephyr.h>
 #include <device.h>
 #include <logging/log.h>
+#ifndef CONFIG_SOC_POSIX
 #include <dk_buttons_and_leds.h>
+#else
+#define dk_set_led_on(...)
+#define dk_get_buttons(...) 0
+#define dk_buttons_init(...) 0
+#define dk_leds_init(...) 0
+#define DK_BTN1_MSK 1
+#define DK_BTN2_MSK 2
+#define DK_BTN3_MSK 3
+#define DK_LED3	3
+#endif
 #include <ram_pwrdn.h>
 
 #include <zboss_api.h>
@@ -591,6 +602,8 @@ void main(void)
 	LOG_INF("ZBOSS Light Switch example started");
 
 	while (1) {
-		k_sleep(K_FOREVER);
+		// k_sleep(K_FOREVER);
+		k_msleep(10000);
+		button_handler(0, BUTTON_ON);
 	}
 }

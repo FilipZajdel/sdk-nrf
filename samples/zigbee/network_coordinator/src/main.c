@@ -11,7 +11,18 @@
 #include <zephyr.h>
 #include <device.h>
 #include <logging/log.h>
+#ifndef CONFIG_SOC_POSIX
 #include <dk_buttons_and_leds.h>
+#else
+#define dk_set_led(...)
+#define dk_set_led_off(...)
+#define dk_set_led_on(...)
+#define dk_set_leds_state(...)
+#define dk_buttons_init(...) 0
+#define dk_leds_init(...) 0
+#define DK_LED1 (1)
+#define DK_BTN1_MSK (0x10)
+#endif
 
 #include <zboss_api.h>
 #include <zb_mem_config_max.h>

@@ -21,6 +21,10 @@ BUILD_ASSERT((ZBOSS_NVRAM_PAGE_SIZE % PHYSICAL_PAGE_SIZE) == 0,
 
 LOG_MODULE_DECLARE(zboss_osif, CONFIG_ZBOSS_OSIF_LOG_LEVEL);
 
+#ifdef CONFIG_SOC_POSIX
+static zb_uint8_t dummy_nvram[ZBOSS_NVRAM_PAGE_COUNT][ZBOSS_NVRAM_PAGE_SIZE];
+#endif
+
 /* ZBOSS callout that should be called once flash erase page operation
  * is finished.
  */
@@ -68,6 +72,7 @@ static zb_uint32_t get_page_base_offset(int page_num)
 zb_ret_t zb_osif_nvram_read(zb_uint8_t page, zb_uint32_t pos, zb_uint8_t *buf,
 			    zb_uint16_t len)
 {
+#ifndef CONFIG_SOC_POSIX
 	if (page >= zb_get_nvram_page_count()) {
 		return RET_PAGE_NOT_FOUND;
 	}
@@ -83,8 +88,8 @@ zb_ret_t zb_osif_nvram_read(zb_uint8_t page, zb_uint32_t pos, zb_uint8_t *buf,
 	if (!len) {
 		return RET_INVALID_PARAMETER_4;
 	}
-	LOG_DBG("Function: %s, page: %d, pos: %d, len: %d",
-		__func__, page, pos, len);
+	LOG_DBG("Function: %s, page: %d, pos: %d, len: %d", __func__, page, pos,
+		len);
 
 	uint32_t flash_addr = get_page_base_offset(page) + pos;
 
@@ -95,11 +100,16 @@ zb_ret_t zb_osif_nvram_read(zb_uint8_t page, zb_uint32_t pos, zb_uint8_t *buf,
 		return RET_ERROR;
 	}
 	return RET_OK;
+#else
+	memcpy(buf, &dummy_nvram[page][pos], len);
+	return RET_OK;
+#endif
 }
 
 zb_ret_t zb_osif_nvram_write(zb_uint8_t page, zb_uint32_t pos, void *buf,
 			     zb_uint16_t len)
 {
+#ifndef CONFIG_SOC_POSIX
 	uint32_t flash_addr = get_page_base_offset(page) + pos;
 
 	if (page >= zb_get_nvram_page_count()) {
@@ -118,8 +128,8 @@ zb_ret_t zb_osif_nvram_write(zb_uint8_t page, zb_uint32_t pos, void *buf,
 		return RET_INVALID_PARAMETER_4;
 	}
 
-	LOG_DBG("Function: %s, page: %d, pos: %d, len: %d",
-		__func__, page, pos, len);
+	LOG_DBG("Function: %s, page: %d, pos: %d, len: %d", __func__, page, pos,
+		len);
 
 	int err = flash_area_write(fa, flash_addr, buf, len);
 
@@ -127,14 +137,16 @@ zb_ret_t zb_osif_nvram_write(zb_uint8_t page, zb_uint32_t pos, void *buf,
 		LOG_ERR("Write error: %d", err);
 		return RET_ERROR;
 	}
-
+#else
+	memcpy(&dummy_nvram[page][pos], buf, len);
+#endif
 	return RET_OK;
 }
 
 zb_ret_t zb_osif_nvram_erase_async(zb_uint8_t page)
 {
 	zb_ret_t ret = RET_OK;
-
+#ifndef CONFIG_SOC_POSIX
 	if (page < zb_get_nvram_page_count()) {
 		int err = flash_area_erase(fa, get_page_base_offset(page),
 					   zb_get_nvram_page_length());
@@ -143,6 +155,10 @@ zb_ret_t zb_osif_nvram_erase_async(zb_uint8_t page)
 			ret = RET_ERROR;
 		}
 	}
+#else
+	memset(dummy_nvram[0], ZBOSS_NVRAM_PAGE_SIZE, 0);
+	memset(dummy_nvram[1], ZBOSS_NVRAM_PAGE_SIZE, 0);
+#endif
 	zb_nvram_erase_finished(page);
 	return ret;
 }
@@ -157,11 +173,13 @@ void zb_osif_nvram_flush(void)
 	/* empty for synchronous erase and write */
 }
 
-
 #ifdef ZB_PRODUCTION_CONFIG
 
-#define ZB_OSIF_PRODUCTION_CONFIG_MAGIC             { 0xE7, 0x37, 0xDD, 0xF6 }
-#define ZB_OSIF_PRODUCTION_CONFIG_MAGIC_SIZE        4
+#define ZB_OSIF_PRODUCTION_CONFIG_MAGIC                                        \
+	{                                                                      \
+		0xE7, 0x37, 0xDD, 0xF6                                         \
+	}
+#define ZB_OSIF_PRODUCTION_CONFIG_MAGIC_SIZE 4
 
 zb_bool_t zb_osif_production_configuration_check_presence(void)
 {
@@ -173,7 +191,7 @@ zb_bool_t zb_osif_production_configuration_check_presence(void)
 				  ZB_OSIF_PRODUCTION_CONFIG_MAGIC_SIZE);
 
 	if (!err) {
-		return ((zb_bool_t) !memcmp(buffer, hdr, sizeof(buffer)));
+		return ((zb_bool_t)!memcmp(buffer, hdr, sizeof(buffer)));
 
 	} else {
 		return ZB_FALSE;
@@ -193,7 +211,6 @@ zb_ret_t zb_osif_production_configuration_read_header(zb_uint8_t *prod_cfg_hdr,
 	return RET_OK;
 }
 
-
 zb_ret_t zb_osif_production_configuration_read(zb_uint8_t *buffer,
 					       zb_uint16_t len,
 					       zb_uint16_t offset)
@@ -208,6 +225,6 @@ zb_ret_t zb_osif_production_configuration_read(zb_uint8_t *buffer,
 	return RET_OK;
 }
 
-#endif  /* ZB_PRODUCTION_CONFIG */
+#endif /* ZB_PRODUCTION_CONFIG */
 
-#endif  /* ZB_USE_NVRAM */
+#endif /* ZB_USE_NVRAM */

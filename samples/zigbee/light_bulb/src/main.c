@@ -15,7 +15,24 @@
 #include <soc.h>
 #include <drivers/pwm.h>
 #include <logging/log.h>
+#ifndef CONFIG_SOC_POSIX
 #include <dk_buttons_and_leds.h>
+#else
+#define dk_set_led(...)
+#define dk_set_led_off(...)
+#define dk_set_led_on(...)
+#define dk_set_leds_state(...)
+#define dk_buttons_init(...) 0
+#define dk_leds_init(...) 0
+#define zigbee_led_status_update(...)
+#define DK_LED1 (1)
+#define DK_LED3 (3)
+#define DK_LED4 (4)
+#define DK_BTN1_MSK (0x10)
+#define DK_BTN4_MSK (0x40)
+#define PWM_DK_LED4_FLAGS (0x11)
+#define PWM_DK_LED4_CHANNEL (2)
+#endif
 
 #include <zboss_api.h>
 #include <zboss_api_addons.h>
@@ -93,7 +110,7 @@
 #define PWM_DK_LED4_DRIVER              DT_PWMS_LABEL(PWM_DK_LED4_NODE)
 #define PWM_DK_LED4_CHANNEL             DT_PWMS_CHANNEL(PWM_DK_LED4_NODE)
 #define PWM_DK_LED4_FLAGS               FLAGS_OR_ZERO(PWM_DK_LED4_NODE)
-#else
+#elif !defined(CONFIG_SOC_POSIX)
 #error "Choose supported PWM driver"
 #endif
 
@@ -218,11 +235,13 @@ static void button_changed(uint32_t button_state, uint32_t has_changed)
 /**@brief Function for initializing additional PWM leds. */
 static void pwm_led_init(void)
 {
+	#ifndef CONFIG_SOC_POSIX
 	led_pwm_dev = device_get_binding(PWM_DK_LED4_DRIVER);
 
 	if (!led_pwm_dev) {
 		LOG_ERR("Cannot find %s!", PWM_DK_LED4_DRIVER);
 	}
+	#endif
 }
 
 /**@brief Function for initializing LEDs and Buttons. */
@@ -251,12 +270,13 @@ static void configure_gpio(void)
 static void light_bulb_set_brightness(zb_uint8_t brightness_level)
 {
 	uint32_t pulse = brightness_level * LED_PWM_PERIOD_US / 255U;
-
+#ifndef CONFIG_SOC_POSIX
 	if (pwm_pin_set_usec(led_pwm_dev, PWM_DK_LED4_CHANNEL,
 			     LED_PWM_PERIOD_US, pulse, PWM_DK_LED4_FLAGS)) {
 		LOG_ERR("Pwm led 4 set fails:\n");
 		return;
 	}
+#endif
 }
 
 /**@brief Function for setting the light bulb brightness.
