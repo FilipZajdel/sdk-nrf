@@ -25,6 +25,10 @@ if (${BOARD} STREQUAL "nrf52840dongle_nrf52840")
   set(CONF_FILE "prj_usb.conf")
 endif()
 
+if (${CONF_FILE} STREQUAL "prj_usb.conf" AND NOT ${BOARD} STREQUAL "nrf52840dongle_nrf52840")
+  set(DTC_OVERLAY_FILE "boards/${BOARD}_usb.overlay")
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project("ZBOSS NCP SoC firmware")
