@@ -1,0 +1,15 @@
+#
+# Copyright (c) 2020 Nordic Semiconductor ASA
+#
+# SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+#
+
+menu "Benchmark"
+
+config BENCHMARK_ZIGBEE
+    bool "Enable Benchmark"
+    default n
+    help
+      The benchmark component for ZigBee.
+
+endmenu
