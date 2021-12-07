@@ -52,3 +52,5 @@ add_subdirectory(partition_manager)
 
 add_subdirectory_ifdef(CONFIG_NRF_RPC nrf_rpc)
 add_subdirectory_ifdef(CONFIG_NRF_802154_RADIO_DRIVER ieee802154)
+
+add_subdirectory(benchmark)
