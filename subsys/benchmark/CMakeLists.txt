@@ -12,14 +12,13 @@ zephyr_library()
 
 zephyr_library_sources(
   benchmark_util.c
-  cli_cpu.c
+  zigbee_benchmark.c
+  zigbee_commands.c
+  zigbee_protocol.c
+  zigbee_bm_cli.c
+  zigbee_timer.c
+  zigbee_zcl_commands.c
 )
 
-# zephyr_library_sources_ifdef(
-#   CONFIG_BT_CTLR_CRYPTO
-#   crypto.c
-# )
-
-zephyr_library_link_libraries(subsys__benchmark)
 
 zephyr_include_directories(include .)

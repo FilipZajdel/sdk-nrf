@@ -8,7 +8,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "app_util_platform.h"
 
 #define BENCHMARK_MAX_PEER_NUMBER               16         /**< Maximal number of discovered peers that can be stored in the database. */
 #define BENCHMARK_SCHED_MAX_EVENT_DATA_SIZE     52         /**< Maximum possible size of a data structure passed by the app scheduler module. */
@@ -92,19 +91,6 @@ typedef struct
     uint32_t total; /**< Total number of attempts. */
     uint32_t error; /**< Total number of failed attempts. */
 } benchmark_mac_counters_t;
-
-typedef PACKED_STRUCT
-{
-    uint32_t bytes_transfered;          /**< Total number of bytes transfered over BLE. */
-    uint32_t duration;                  /**< Total duration of the BLE transfer. */
-    uint32_t throughput;                /**< Average throughput of the BLE transfer. */
-} benchmark_ble_results_t;
-
-typedef struct
-{
-    benchmark_ble_results_t local_results;      /**< Data transfer measurements over the BLE, collected locally. */
-    benchmark_ble_results_t remote_results;     /**< Data transfer measurements over the BLE, collected from peer. */
-} benchmark_ble_ping_results_t;
 
 typedef struct
 {
@@ -227,20 +213,6 @@ void benchmark_clear_latency(benchmark_latency_t * p_latency);
  * @param[in]    latency      Currently measured latency.
  */
 void benchmark_update_latency(benchmark_latency_t * p_latency, uint32_t latency);
-
-/**@brief   Function for retrieving the amount of data sent and the throughput results from the BLE module.
- *
- * @return Pointer to structure holding bytes of data sent, transmission duration and throughput.
- */
-benchmark_ble_ping_results_t * benchmark_ble_continuous_results_get(void);
-
-/**@brief   Function for starting packet flood over the BLE.
- */
-void benchmark_ble_flood_start(void);
-
-/**@brief   Function for stopping packet flood over the BLE.
- */
-void benchmark_ble_flood_stop(void);
 
 #endif // BENCHMARK_H__
 
