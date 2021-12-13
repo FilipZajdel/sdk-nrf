@@ -1,8 +1,8 @@
 /*$$$LICENCE_NORDIC_STANDARD<2018>$$$*/
 
 #include "cli_api.h"
-#include "zboss_api.h"
-#include "zigbee_cli.h"
+#include <zboss_api.h>
+#include <zigbee_cli.h>
 
 void cli_init(void)
 {

@@ -9,6 +9,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "stub_api.h"
+
 #define BENCHMARK_MAX_PEER_NUMBER               16         /**< Maximal number of discovered peers that can be stored in the database. */
 #define BENCHMARK_SCHED_MAX_EVENT_DATA_SIZE     52         /**< Maximum possible size of a data structure passed by the app scheduler module. */
 #define BENCHMARK_DISCOVERY_TIMEOUT             1000       /**< Time after which application stops waiting for discovery responses in ms */

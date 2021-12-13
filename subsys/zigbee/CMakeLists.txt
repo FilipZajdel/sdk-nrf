@@ -11,6 +11,8 @@ zephyr_interface_library_named(zigbee)
 target_include_directories(zigbee INTERFACE osif)
 target_include_directories_ifdef(CONFIG_ZIGBEE_SHELL zigbee INTERFACE cli)
 
+zephyr_include_directories_ifdef(CONFIG_ZIGBEE_SHELL cli)
+
 zephyr_library()
 
 zephyr_library_link_libraries(zigbee)

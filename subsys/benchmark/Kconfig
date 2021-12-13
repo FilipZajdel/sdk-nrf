@@ -9,6 +9,7 @@ menu "Benchmark"
 config BENCHMARK_ZIGBEE
     bool "Enable Benchmark"
     default n
+    select CONFIG_ZIGBEE_SHELL
     help
       The benchmark component for ZigBee.
 

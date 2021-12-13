@@ -1,9 +1,12 @@
 /*$$$LICENCE_NORDIC_STANDARD<2018>$$$*/
 
+#include <zboss_api.h>
+#include <zigbee/zigbee_error_handler.h>
 #include "timer_api.h"
-#include "zboss_api.h"
-#include "nrf_log_ctrl.h"
-#include "zb_error_handler.h"
+
+#define UNUSED_RETURN_VALUE(val) (void)val
+#define UNUSED_PARAMETER(val) (void)val
+
 
 static timer_cb_t m_timer_cb;
 static uint32_t   m_timeout_ms;
@@ -60,7 +63,7 @@ void timer_set(uint32_t timeout_ms, timer_cb_t p_callback)
     {
         m_timeout_beacon_int = ZB_TIMER_GET() + ZB_MILLISECONDS_TO_BEACON_INTERVAL(m_timeout_ms);
         zb_err_code = ZB_SCHEDULE_APP_ALARM(timer_timeout_zboss_cb, 0, ZB_MILLISECONDS_TO_BEACON_INTERVAL(m_timeout_ms));
-        ZB_ERROR_CHECK(zb_err_code);
+        // ZB_ERROR_CHECK(zb_err_code);
         m_timeout_ms = 0;
     }
 }
@@ -78,7 +81,7 @@ void timer_start(void)
         {
             m_timeout_beacon_int = ZB_TIMER_GET() + ZB_MILLISECONDS_TO_BEACON_INTERVAL(m_timeout_ms);
             zb_err_code = ZB_SCHEDULE_APP_ALARM(timer_timeout_zboss_cb, 0, ZB_MILLISECONDS_TO_BEACON_INTERVAL(m_timeout_ms));
-            ZB_ERROR_CHECK(zb_err_code);
+            // ZB_ERROR_CHECK(zb_err_code);
             m_timeout_ms = 0;
         }
     }
