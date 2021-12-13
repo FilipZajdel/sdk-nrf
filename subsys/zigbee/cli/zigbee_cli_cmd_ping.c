@@ -21,10 +21,15 @@
 
 LOG_MODULE_REGISTER(zigbee_shell_ping, CONFIG_ZIGBEE_SHELL_LOG_LEVEL);
 
-static uint8_t ping_seq_num;
-static ping_time_cb_t ping_ind_cb;
 
 static zb_uint32_t get_request_duration(struct ctx_entry *req_data);
+static void ping_cli_evt_handler(enum ping_time_evt evt, zb_uint32_t delay_ms,
+				 struct ctx_entry *req_data);
+
+static uint8_t ping_seq_num;
+static ping_time_cb_t ping_ind_cb;
+static ping_time_cb_t ping_evt_cb = ping_cli_evt_handler;
+
 
 /**@brief Invalidate an entry with ping request data after the timeout.
  *        This function is called as the ZBOSS callback.
@@ -333,6 +338,13 @@ static void ping_cli_evt_handler(enum ping_time_evt evt, zb_uint32_t delay_ms,
 void zb_ping_set_ping_indication_cb(ping_time_cb_t cb)
 {
 	ping_ind_cb = cb;
+}
+
+void zb_ping_set_ping_event_cb(ping_time_cb_t cb)
+{
+	if (cb != NULL) {
+		ping_evt_cb = cb;
+	}
 }
 
 /**@brief Actually construct the Ping Request frame and send it.
@@ -772,7 +784,7 @@ int cmd_zb_ping(const struct shell *shell, size_t argc, char **argv)
 		return -ENOEXEC;
 	}
 
-	ping_entry->ping_req_data.cb = ping_cli_evt_handler;
+	ping_entry->ping_req_data.cb = ping_evt_cb;
 	ping_entry->ping_req_data.request_ack = 0;
 	ping_entry->ping_req_data.request_echo = 1;
 	ping_entry->ping_req_data.timeout_ms =

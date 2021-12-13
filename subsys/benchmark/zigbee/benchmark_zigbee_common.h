@@ -3,7 +3,7 @@
 #ifndef BENCHMARK_ZIGBEE_COMMON_H__
 #define BENCHMARK_ZIGBEE_COMMON_H__
 
-#include "zboss_api.h"
+#include <zboss_api.h>
 
 
 /**@brief Benchmark control command type definition. */

@@ -4,9 +4,9 @@
 #define PROTOCOL_API_H__
 
 #include "benchmark_api.h"
-#include "nrf_cli.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 /**@brief Function for determining if a protocol-specific function returned an error.
  *

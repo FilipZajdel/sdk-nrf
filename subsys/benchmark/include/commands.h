@@ -3,7 +3,6 @@
 #ifndef COMMANDS_H__
 #define COMMANDS_H__
 
-#include "nrf_cli.h"
 #include <stdint.h>
 
 #define DEVICE_ID_HI(device_id) ((uint32_t)((device_id >> 32) & 0xFFFFFFFF))  /** Get more significat 32-bits out of 64-bit device ID value. */

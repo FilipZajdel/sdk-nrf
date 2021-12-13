@@ -1,17 +1,26 @@
 /*$$$LICENCE_NORDIC_STANDARD<2018>$$$*/
 
+#include <string.h>
+
+#include <zephyr.h>
+#include <zboss_api.h>
+#include <zigbee_cli.h>
+#include <logging/log.h>
+
 #include "benchmark_api.h"
 #include "benchmark_zigbee_common.h"
-#include "cpu_utilization.h"
-#include "zboss_api.h"
-#include "zigbee_cli.h"
-#include "zigbee_cli_ping.h"
-#include "app_timer.h"
-#include "nrf_log.h"
+#include "zigbee_cli_ping_types.h"
+
 
 #if defined ZIGBEE_NRF_RADIO_STATISTICS
 #include "zigbee_statistics.h"
 #endif /* ZIGBEE_NRF_RADIO_STATISTICS */
+
+#define CMD_ZB_PING_ARGS_NUM 4
+#define CMD_SHELL_ARG_STRLEN 12
+
+#define CMD_ZB_PING_ARG_NO_ECHO "--no-echo"
+#define CMD_ZB_PING_ARG_REQ_ACK "--aps-ack"
 
 typedef union
 {
@@ -19,7 +28,12 @@ typedef union
     uint64_t       uint_addr;
 } eui64_map_addr_t;
 
-APP_TIMER_DEF(m_discovery_timer);
+typedef char cmd_arg_t[CMD_SHELL_ARG_STRLEN];
+
+static void discovery_timeout(struct k_timer *timer);
+
+K_TIMER_DEFINE(discovery_timer, discovery_timeout, NULL);
+
 static zb_time_t                     m_start_time;
 static benchmark_evt_t               m_benchmark_evt;
 static benchmark_result_t            m_local_result;
@@ -45,6 +59,24 @@ static benchmark_status_t m_test_status =
     },
 };
 
+static size_t ping_req_data_to_args(struct ping_req_data *ping_req, cmd_arg_t args[CMD_ZB_PING_ARGS_NUM])
+{
+    size_t argc = 0;
+
+    if (ping_req->request_ack) {
+        strcpy(args[argc++], CMD_ZB_PING_ARG_REQ_ACK);
+    }
+
+    if (!ping_req->request_echo) {
+        strcpy(args[argc++], CMD_ZB_PING_ARG_NO_ECHO);
+    }
+
+    sprintf(args[argc++], "0x%.4x", ping_req->packet_info.dst_addr.addr_short);
+    sprintf(args[argc++], "%u", ping_req->packet_info.dst_addr_mode);
+
+    return argc;
+}
+
 /**@brief Function that triggers calculation of the test duration. */
 static void benchmark_test_duration_calculate(void)
 {
@@ -62,26 +94,26 @@ static void mac_counters_read(benchmark_mac_counters_t * p_mac_tx_counters)
 #if defined ZIGBEE_NRF_RADIO_STATISTICS
     zigbee_nrf_radio_stats_t * p_stats = zigbee_get_nrf_radio_stats();
 
-    NRF_LOG_DEBUG("Radio RX statistics:");
-    NRF_LOG_DEBUG("\trx_successful: %ld", p_stats->rx_successful);
-    NRF_LOG_DEBUG("\trx_err_none: %ld", p_stats->rx_err_none);
-    NRF_LOG_DEBUG("\trx_err_invalid_frame: %ld", p_stats->rx_err_invalid_frame);
-    NRF_LOG_DEBUG("\trx_err_invalid_fcs: %ld", p_stats->rx_err_invalid_fcs);
-    NRF_LOG_DEBUG("\trx_err_invalid_dest_addr: %ld", p_stats->rx_err_invalid_dest_addr);
-    NRF_LOG_DEBUG("\trx_err_runtime: %ld", p_stats->rx_err_runtime);
-    NRF_LOG_DEBUG("\trx_err_timeslot_ended: %ld", p_stats->rx_err_timeslot_ended);
-    NRF_LOG_DEBUG("\trx_err_aborted: %ld\r\n", p_stats->rx_err_aborted);
+    // LOG_DBG("Radio RX statistics:");
+    // LOG_DBG("\trx_successful: %ld", p_stats->rx_successful);
+    // LOG_DBG("\trx_err_none: %ld", p_stats->rx_err_none);
+    // LOG_DBG("\trx_err_invalid_frame: %ld", p_stats->rx_err_invalid_frame);
+    // LOG_DBG("\trx_err_invalid_fcs: %ld", p_stats->rx_err_invalid_fcs);
+    // LOG_DBG("\trx_err_invalid_dest_addr: %ld", p_stats->rx_err_invalid_dest_addr);
+    // LOG_DBG("\trx_err_runtime: %ld", p_stats->rx_err_runtime);
+    // LOG_DBG("\trx_err_timeslot_ended: %ld", p_stats->rx_err_timeslot_ended);
+    // LOG_DBG("\trx_err_aborted: %ld\r\n", p_stats->rx_err_aborted);
 
-    NRF_LOG_DEBUG("Radio TX statistics:");
-    NRF_LOG_DEBUG("\ttx_successful: %d", p_stats->tx_successful);
-    NRF_LOG_DEBUG("\ttx_err_none: %d", p_stats->tx_err_none);
-    NRF_LOG_DEBUG("\ttx_err_busy_channel: %d", p_stats->tx_err_busy_channel);
-    NRF_LOG_DEBUG("\ttx_err_invalid_ack: %d", p_stats->tx_err_invalid_ack);
-    NRF_LOG_DEBUG("\ttx_err_no_mem: %d", p_stats->tx_err_no_mem);
-    NRF_LOG_DEBUG("\ttx_err_timeslot_ended: %d", p_stats->tx_err_timeslot_ended);
-    NRF_LOG_DEBUG("\ttx_err_no_ack: %d", p_stats->tx_err_no_ack);
-    NRF_LOG_DEBUG("\ttx_err_aborted: %d", p_stats->tx_err_aborted);
-    NRF_LOG_DEBUG("\ttx_err_timeslot_denied: %d", p_stats->tx_err_timeslot_denied);
+    // LOG_DBG("Radio TX statistics:");
+    // LOG_DBG("\ttx_successful: %d", p_stats->tx_successful);
+    // LOG_DBG("\ttx_err_none: %d", p_stats->tx_err_none);
+    // LOG_DBG("\ttx_err_busy_channel: %d", p_stats->tx_err_busy_channel);
+    // LOG_DBG("\ttx_err_invalid_ack: %d", p_stats->tx_err_invalid_ack);
+    // LOG_DBG("\ttx_err_no_mem: %d", p_stats->tx_err_no_mem);
+    // LOG_DBG("\ttx_err_timeslot_ended: %d", p_stats->tx_err_timeslot_ended);
+    // LOG_DBG("\ttx_err_no_ack: %d", p_stats->tx_err_no_ack);
+    // LOG_DBG("\ttx_err_aborted: %d", p_stats->tx_err_aborted);
+    // LOG_DBG("\ttx_err_timeslot_denied: %d", p_stats->tx_err_timeslot_denied);
 
     p_mac_tx_counters->error = p_stats->tx_err_busy_channel + p_stats->tx_err_no_mem
                                + p_stats->tx_err_invalid_ack + p_stats->tx_err_no_ack
@@ -132,9 +164,8 @@ static void result_clear(void)
  *
  * @param[in] p_context Unused parameter.
  */
-static void discovery_timeout(void * p_context)
+static void discovery_timeout(struct k_timer *timer)
 {
-    UNUSED_PARAMETER(p_context);
     m_benchmark_evt.evt                        = BENCHMARK_DISCOVERY_COMPLETED;
     m_benchmark_evt.context.p_peer_information = &m_peer_information;
 
@@ -161,23 +192,23 @@ static void zb_resolve_ieee_addr_cb(zb_bufid_t bufid)
 
         ZB_LETOH64(ieee_addr.arr_addr, p_resp->ieee_addr_remote_dev);
         ZB_LETOH16(&nwk_addr, &(p_resp->nwk_addr_remote_dev));
-        UNUSED_RETURN_VALUE(zb_address_update(ieee_addr.arr_addr, nwk_addr, ZB_TRUE, &addr_ref));
-        NRF_LOG_DEBUG("Received EUI64 address for device 0x%04x -> %ld.", nwk_addr, ieee_addr.uint_addr);
+        zb_address_update(ieee_addr.arr_addr, nwk_addr, ZB_TRUE, &addr_ref);
+        // LOG_DBG("Received EUI64 address for device 0x%04x -> %ld.", nwk_addr, ieee_addr.uint_addr);
 
         for (i = 0; i < m_peer_information.peer_count; i++)
         {
             if (m_peer_information.peer_table[i].p_address->nwk_addr == nwk_addr)
             {
                 m_peer_information.peer_table[i].device_id = ieee_addr.uint_addr;
-                NRF_LOG_DEBUG("The device with address 0x%04x is updated.", nwk_addr);
+                // LOG_DBG("The device with address 0x%04x is updated.", nwk_addr);
                 break;
             }
         }
     }
     else
     {
-        NRF_LOG_WARNING("Unable to resolve EUI64 source address. Status: %d\r\n",
-                        p_resp->status);
+        // LOG_WARNING("Unable to resolve EUI64 source address. Status: %d\r\n",
+                        // p_resp->status);
     }
 
     zb_buf_free(bufid);
@@ -203,7 +234,7 @@ static void zb_resolve_ieee_addr(zb_bufid_t bufid, zb_uint16_t nwk_addr)
     tsn = zb_zdo_ieee_addr_req(bufid, zb_resolve_ieee_addr_cb);
     if (tsn == ZB_ZDO_INVALID_TSN)
     {
-        NRF_LOG_WARNING("Failed to send IEEE address request for address: 0x%04x", nwk_addr);
+        // LOG_WARNING("Failed to send IEEE address request for address: 0x%04x", nwk_addr);
         zb_buf_free(bufid);
     }
 }
@@ -225,11 +256,11 @@ static void zb_find_peers_cb(zb_bufid_t bufid)
         while (match_len > 0)
         {
             /* Match EP list follows right after response header */
-            if (*p_match_ep == zb_get_cli_endpoint())
+            if (*p_match_ep == zb_cli_get_endpoint())
             {
                 uint16_t peer_number = m_peer_information.peer_count;
 
-                NRF_LOG_INFO("Peer found: %0hx", p_ind->src_addr);
+                // LOG_INFO("Peer found: %0hx", p_ind->src_addr);
 
                 if (peer_number < BENCHMARK_MAX_PEER_NUMBER)
                 {
@@ -244,7 +275,7 @@ static void zb_find_peers_cb(zb_bufid_t bufid)
                 }
                 else
                 {
-                    NRF_LOG_INFO("Can't add peer to the list, list full.");
+                    // LOG_INFO("Can't add peer to the list, list full.");
                 }
             }
 
@@ -268,7 +299,7 @@ static zb_ret_t zigbee_benchmark_peer_discovery_request_send(void)
     bufid = zb_buf_get_out();
     if (!bufid)
     {
-        NRF_LOG_ERROR("Failed to execute command (buffer allocation failed).");
+        // LOG_ERROR("Failed to execute command (buffer allocation failed).");
         return RET_ERROR;
     }
 
@@ -300,8 +331,11 @@ static zb_ret_t zigbee_benchmark_peer_discovery_request_send(void)
  * @param[in] delay_us  Time, in microseconds, between ping request and the event.
  * @param[in] p_request Pointer to the ongoing ping request context structure.
  */
-static void benchmark_ping_evt_handler(ping_time_evt_t evt, zb_uint32_t delay_us, ping_request_t * p_request)
+static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay_us,
+                                       struct ctx_entry *entry)
 {
+    struct ping_req_data *p_request = &entry->ping_req_data;
+
     switch (evt)
     {
         case PING_EVT_FRAME_SENT:
@@ -317,7 +351,7 @@ static void benchmark_ping_evt_handler(ping_time_evt_t evt, zb_uint32_t delay_us
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                NRF_LOG_DEBUG("Transmission time: %u us", delay_us / 2);
+                // LOG_DBG("Transmission time: %u us", delay_us / 2);
             }
             break;
 
@@ -327,7 +361,7 @@ static void benchmark_ping_evt_handler(ping_time_evt_t evt, zb_uint32_t delay_us
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                NRF_LOG_DEBUG("Transmission time: %u us", delay_us / 2);
+                // LOG_DBG("Transmission time: %u us", delay_us / 2);
             }
             break;
 
@@ -338,7 +372,7 @@ static void benchmark_ping_evt_handler(ping_time_evt_t evt, zb_uint32_t delay_us
                 m_test_status.waiting_for_ack = 0;
                 m_test_status.acks_lost++;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
-                NRF_LOG_DEBUG("Transmission timed out.");
+                // LOG_DBG("Transmission timed out.");
             }
             break;
 
@@ -398,9 +432,11 @@ static void benchmark_ping_evt_handler(ping_time_evt_t evt, zb_uint32_t delay_us
 }
 
 /**@brief Function that constructs and sends ping request. */
-static void zigbee_benchmark_send_ping_req(nrf_cli_t * p_cli)
+static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 {
-    ping_request_t * p_ping_req;
+    struct ping_req_data ping_req;
+    cmd_arg_t ping_args[CMD_ZB_PING_ARGS_NUM];
+    size_t argc = 0;
 
     if (m_test_status.packets_left_count == 0)
     {
@@ -412,56 +448,42 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t * p_cli)
         return;
     }
 
-    p_ping_req = zb_ping_acquire_request();
-    if (p_ping_req == NULL)
-    {
-        return;
-    }
-
-    if (mp_test_configuration->length > PING_MAX_LENGTH)
-    {
-        m_state = TEST_ERROR;
-        zb_ping_release_request(p_ping_req);
-        return;
-    }
-
-    p_ping_req->remote_addr.addr_short = m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
-    p_ping_req->remote_addr_mode = ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
-    p_ping_req->timeout_ms = mp_test_configuration->ack_timeout;
-    p_ping_req->count = mp_test_configuration->length;
-    p_ping_req->p_cli = p_cli;
-    p_ping_req->p_cb = benchmark_ping_evt_handler;
+    ping_req.packet_info.dst_addr.addr_short =
+        m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
+    ping_req.packet_info.dst_addr_mode = ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
 
     switch (mp_test_configuration->mode)
     {
         case BENCHMARK_MODE_UNIDIRECTIONAL:
-            p_ping_req->request_ack  = 0;
-            p_ping_req->request_echo = 0;
+            ping_req.request_ack  = 0;
+            ping_req.request_echo = 0;
             m_state = TEST_IN_PROGRESS_FRAME_SENDING;
             break;
 
         case BENCHMARK_MODE_ECHO:
-            p_ping_req->request_ack  = 0;
-            p_ping_req->request_echo = 1;
+            ping_req.request_ack = 0;
+            ping_req.request_echo = 0;
             m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
             break;
 
         case BENCHMARK_MODE_ACK:
-            p_ping_req->request_ack  = 1;
-            p_ping_req->request_echo = 0;
+            ping_req.request_ack  = 1;
+            ping_req.request_echo = 0;
             m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ACK;
             break;
 
         default:
-            NRF_LOG_ERROR("Unsupported test mode - fall back to the default mode.");
+            // LOG_ERROR("Unsupported test mode - fall back to the default mode.");
             mp_test_configuration->mode = BENCHMARK_MODE_ECHO;
-            p_ping_req->request_ack     = 0;
-            p_ping_req->request_echo    = 1;
+            ping_req.request_ack     = 0;
+            ping_req.request_echo    = 1;
             m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
             break;
     }
 
-    ping_request_send(p_ping_req);
+    argc = ping_req_data_to_args(&ping_req, ping_args);
+
+    cmd_zb_ping(NULL, argc, (char **)ping_args);
 }
 
 /**@brief Function that starts benchmark test in master mode. */
@@ -469,7 +491,7 @@ static void zigbee_benchmark_test_start_master(void)
 {
     if (m_state != TEST_IDLE)
     {
-        NRF_LOG_ERROR("Stop current test in order to start different suite.");
+        // LOG_ERROR("Stop current test in order to start different suite.");
         return;
     }
 
@@ -477,7 +499,7 @@ static void zigbee_benchmark_test_start_master(void)
     // Ignore APS ACK transmission for the TEST_START_REQUEST command.
     m_local_result.mac_tx_counters.total++;
 
-    UNUSED_RETURN_VALUE(cpu_utilization_start());
+    cpu_utilization_start();
     m_test_status.test_in_progress = true;
     m_start_time                   = ZB_TIMER_GET();
 
@@ -491,7 +513,7 @@ static void zigbee_benchmark_test_start_master(void)
         mp_callback(&m_benchmark_evt);
     }
 
-    NRF_LOG_INFO("Start benchmark on the local peer.");
+    // LOG_INFO("Start benchmark on the local peer.");
 }
 
 /**@brief Function that stops benchmark test in master mode. */
@@ -499,7 +521,7 @@ static void zigbee_benchmark_test_stop_master(void)
 {
     if (m_state != TEST_IDLE)
     {
-        NRF_LOG_ERROR("Requested to get remote results, but the device is in an incorrect state.");
+        // LOG_ERROR("Requested to get remote results, but the device is in an incorrect state.");
         return;
     }
 
@@ -518,7 +540,7 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
 {
     if (m_state != TEST_IDLE)
     {
-        NRF_LOG_ERROR("Stop current test in order to start different suite.");
+        // LOG_ERROR("Stop current test in order to start different suite.");
         return ZB_ZCL_STATUS_FAIL;
     }
 
@@ -529,7 +551,7 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
     m_start_time            = ZB_TIMER_GET();
 
     result_clear();
-    UNUSED_RETURN_VALUE(cpu_utilization_start());
+    cpu_utilization_start();
     m_test_status.test_in_progress = true;
     m_test_status.reset_counters   = true;
 
@@ -541,7 +563,7 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
         mp_callback(&m_benchmark_evt);
     }
 
-    NRF_LOG_INFO("Start benchmark on the remote peer.");
+    // LOG_INFO("Start benchmark on the remote peer.");
     return ZB_ZCL_STATUS_SUCCESS;
 }
 
@@ -556,7 +578,7 @@ zb_zcl_status_t zigbee_benchmark_test_stop_slave(void)
 
     mac_counters_calculate();
     m_local_result.cpu_utilization = cpu_utilization_get();
-    UNUSED_RETURN_VALUE(cpu_utilization_stop());
+    cpu_utilization_stop();
     benchmark_test_duration_calculate();
     m_state = TEST_IDLE;
     m_test_status.test_in_progress = false;
@@ -571,14 +593,14 @@ zb_zcl_status_t zigbee_benchmark_test_stop_slave(void)
         mp_callback(&m_benchmark_evt);
     }
 
-    NRF_LOG_INFO("Benchmark finished on the remote peer.");
+    // LOG_INFO("Benchmark finished on the remote peer.");
     return ZB_ZCL_STATUS_SUCCESS;
 }
 
 /**@brief Function that is called upon reception of remote test results. */
 void zigbee_benchmark_results_received(benchmark_result_t * p_result)
 {
-    NRF_LOG_DEBUG("Benchmark results received from the remote peer.");
+    // LOG_DBG("Benchmark results received from the remote peer.");
     memcpy(&m_remote_result, p_result, sizeof(benchmark_result_t));
 
     m_benchmark_evt.evt                             = BENCHMARK_TEST_COMPLETED;
@@ -602,22 +624,22 @@ void zigbee_benchmark_command_response_handler(zigbee_benchmark_ctrl_t cmd_id, z
         switch (cmd_id)
         {
             case TEST_START_REQUEST:
-                NRF_LOG_INFO("Remote peer failed to start benchmark execution. Error: %d", status);
+                // LOG_INFO("Remote peer failed to start benchmark execution. Error: %d", status);
                 m_benchmark_evt.evt = BENCHMARK_TEST_STARTED;
                 break;
 
             case TEST_STOP_REQUEST:
-                NRF_LOG_INFO("Remote peer failed to stop benchmark execution. Error: %d", status);
+                // LOG_INFO("Remote peer failed to stop benchmark execution. Error: %d", status);
                 m_benchmark_evt.evt = BENCHMARK_TEST_STOPPED;
                 break;
 
             case TEST_RESULTS_REQUEST:
-                NRF_LOG_INFO("Remote peer failed to send benchmark results. Error: %d", status);
+                // LOG_INFO("Remote peer failed to send benchmark results. Error: %d", status);
                 m_benchmark_evt.evt = BENCHMARK_TEST_COMPLETED;
                 break;
 
             default:
-                NRF_LOG_WARNING("Unsupported remote benchmark command response received. Command: %d", cmd_id);
+                // LOG_WARNING("Unsupported remote benchmark command response received. Command: %d", cmd_id);
                 m_benchmark_evt.context.error = ZB_ZCL_STATUS_SUCCESS;
                 break;
         }
@@ -634,17 +656,17 @@ void zigbee_benchmark_command_response_handler(zigbee_benchmark_ctrl_t cmd_id, z
     switch (cmd_id)
     {
         case TEST_START_REQUEST:
-            NRF_LOG_DEBUG("Remote peer successfully started benchmark execution.");
+            // LOG_DBG("Remote peer successfully started benchmark execution.");
             zigbee_benchmark_test_start_master();
             break;
 
         case TEST_STOP_REQUEST:
-            NRF_LOG_DEBUG("Remote peer successfully finished benchmark execution.");
+            // LOG_DBG("Remote peer successfully finished benchmark execution.");
             zigbee_benchmark_test_stop_master();
             break;
 
         default:
-            NRF_LOG_WARNING("Unsupported remote benchmark command response received: %d", cmd_id);
+            // LOG_WARNING("Unsupported remote benchmark command response received: %d", cmd_id);
             break;
     }
 }
@@ -652,36 +674,35 @@ void zigbee_benchmark_command_response_handler(zigbee_benchmark_ctrl_t cmd_id, z
 /**@brief Aborts current benchmark test execution. */
 void zigbee_benchmark_test_abort(void)
 {
-    NRF_LOG_WARNING("Abort benchmark execution.");
-    UNUSED_RETURN_VALUE(benchmark_test_stop());
+    // LOG_WARNING("Abort benchmark execution.");
+    benchmark_test_stop();
 }
 
 void benchmark_init(void)
 {
     mp_test_configuration = NULL;
     zb_ping_set_ping_indication_cb(benchmark_ping_evt_handler);
-
-    uint32_t err_code = app_timer_create(&m_discovery_timer, APP_TIMER_MODE_SINGLE_SHOT, discovery_timeout);
-    APP_ERROR_CHECK(err_code);
+    zb_ping_set_ping_event_cb(benchmark_ping_evt_handler);
+    // APP_ERROR_CHECK(err_code);
 }
 
 uint32_t benchmark_test_init(benchmark_configuration_t * p_configuration, benchmark_callback_t callback)
 {
     if (m_state != TEST_IDLE)
     {
-        NRF_LOG_ERROR("Stop current test in order to modify test settings.");
+        // LOG_ERROR("Stop current test in order to modify test settings.");
         return (uint32_t)RET_ERROR;
     }
 
     if ((p_configuration == NULL) || (callback == NULL))
     {
-        NRF_LOG_ERROR("Both configuration and callback have to be passed.");
+        // LOG_ERROR("Both configuration and callback have to be passed.");
         return (uint32_t)RET_ERROR;
     }
 
     if (callback == NULL)
     {
-        NRF_LOG_ERROR("Event callback have to be passed.");
+        // LOG_ERROR("Event callback have to be passed.");
         return (uint32_t)RET_ERROR;
     }
 
@@ -700,13 +721,13 @@ uint32_t benchmark_test_start(void)
 
     if (m_state != TEST_IDLE)
     {
-        NRF_LOG_ERROR("Stop current test in order to start different suite.");
+        // LOG_ERROR("Stop current test in order to start different suite.");
         return (uint32_t)RET_ERROR;
     }
 
     if (mp_test_configuration == NULL)
     {
-        NRF_LOG_ERROR("Provide test configuration before starting a test suite.");
+        // LOG_ERROR("Provide test configuration before starting a test suite.");
         return (uint32_t)RET_ERROR;
     }
 
@@ -714,7 +735,7 @@ uint32_t benchmark_test_start(void)
     m_test_status.acks_lost      = 0;
     m_test_status.reset_counters = false;
 
-    NRF_LOG_INFO("Send start request to the remote peer.");
+    // LOG_INFO("Send start request to the remote peer.");
     peer_addr = m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
     return (uint32_t)zb_buf_get_out_delayed_ext(zigbee_benchmark_peer_start_request_send, peer_addr, 0);
 }
@@ -734,21 +755,21 @@ uint32_t benchmark_test_stop(void)
 
     if (m_state == TEST_IDLE)
     {
-        NRF_LOG_ERROR("There is no ongoing test.");
+        // LOG_ERROR("There is no ongoing test.");
         return (uint32_t)RET_ERROR;
     }
 
-    NRF_LOG_INFO("Reset benchmark state.");
+    // LOG_INFO("Reset benchmark state.");
     m_state = TEST_IDLE;
     benchmark_test_duration_calculate();
     mac_counters_calculate();
-    UNUSED_RETURN_VALUE(cpu_utilization_stop());
+    cpu_utilization_stop();
 
     if (m_test_status.test_in_progress)
     {
         zb_uint16_t peer_addr = m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
 
-        NRF_LOG_INFO("Stop remote peer.");
+        // LOG_INFO("Stop remote peer.");
         m_test_status.test_in_progress = false;
 
         return (uint32_t)zb_buf_get_out_delayed_ext(zigbee_benchmark_peer_stop_request_send, peer_addr, 0);
@@ -761,13 +782,13 @@ uint32_t benchmark_peer_discover(void)
 {
     if (m_state != TEST_IDLE)
     {
-        NRF_LOG_ERROR("Stop current test in order to start peer discovery.");
+        // LOG_ERROR("Stop current test in order to start peer discovery.");
         return (uint32_t)RET_ERROR;
     }
 
     if (mp_test_configuration == NULL)
     {
-        NRF_LOG_ERROR("Provide test configuration before starting a peer discovery.");
+        // LOG_ERROR("Provide test configuration before starting a peer discovery.");
         return (uint32_t)RET_ERROR;
     }
 
@@ -779,8 +800,7 @@ uint32_t benchmark_peer_discover(void)
         return (uint32_t)error;
     }
 
-    uint32_t err_code = app_timer_start(m_discovery_timer, APP_TIMER_TICKS(BENCHMARK_DISCOVERY_TIMEOUT), NULL);
-    APP_ERROR_CHECK(err_code);
+    k_timer_start(&discovery_timer, K_MSEC(BENCHMARK_DISCOVERY_TIMEOUT), K_NO_WAIT);
 
     return (uint32_t)RET_OK;
 }
@@ -810,8 +830,8 @@ void benchmark_process(void)
         case TEST_ERROR:
             if (mp_test_configuration)
             {
-                NRF_LOG_ERROR("Error occurred during the test transmission. Sent %d packets.",
-                              (mp_test_configuration->count - m_test_status.packets_left_count));
+                // LOG_ERROR("Error occurred during the test transmission. Sent %d packets.",
+                            //   (mp_test_configuration->count - m_test_status.packets_left_count));
             }
             m_test_status.test_in_progress = false;
             m_state = TEST_IDLE;
@@ -832,24 +852,24 @@ void benchmark_process(void)
         case TEST_IN_PROGRESS_FRAME_SENT:
             if (m_test_status.packets_left_count > 0)
             {
-                NRF_LOG_DEBUG("Test frame sent, prepare next frame.");
+                // LOG_DBG("Test frame sent, prepare next frame.");
                 m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
                 zigbee_benchmark_send_ping_req(NULL);
             }
             else
             {
-                NRF_LOG_DEBUG("Test frame sent, test finished.");
+                // LOG_DBG("Test frame sent, test finished.");
                 m_state = TEST_FINISHED;
             }
             break;
 
         case TEST_FINISHED:
-            NRF_LOG_INFO("Benchmark test finished. Proceed with the tear down process.");
-            UNUSED_RETURN_VALUE(benchmark_test_stop());
+            // LOG_INFO("Benchmark test finished. Proceed with the tear down process.");
+            benchmark_test_stop();
             break;
 
         default:
-            NRF_LOG_ERROR("Invalid test state. Fall back to the idle state.");
+            // LOG_ERROR("Invalid test state. Fall back to the idle state.");
             zigbee_benchmark_test_abort();
             break;
     }
@@ -868,7 +888,7 @@ uint32_t benchmark_peer_results_request_send(void)
 {
     zb_uint16_t peer_addr = m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
 
-    NRF_LOG_INFO("Send a request for benchmark results to the remote peer.");
+    // LOG_INFO("Send a request for benchmark results to the remote peer.");
     return zb_buf_get_out_delayed_ext(zigbee_benchmark_peer_results_request_send, peer_addr, 0);
 }
 

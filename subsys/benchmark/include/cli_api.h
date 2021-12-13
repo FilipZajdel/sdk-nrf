@@ -4,7 +4,9 @@
 #define CLI_H__
 
 #include "benchmark_api.h"
-#include "nrf_cli.h"
+
+#include <stddef.h>
+// #include "nrf_cli.h"
 
 #define CLI_REMOTE_INSTANCES 5       /**< Maximal number of remote CLI connections. */
 
