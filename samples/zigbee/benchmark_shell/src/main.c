@@ -233,6 +233,8 @@ void main(void)
 
 	app_clusters_attr_init();
 
+	benchmark_init();
+
 	/* Register handlers to identify notifications */
 	ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(APP_ZIGBEE_ENDPOINT, identify_cb);
 

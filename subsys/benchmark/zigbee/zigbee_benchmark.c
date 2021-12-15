@@ -683,7 +683,7 @@ void benchmark_init(void)
     mp_test_configuration = NULL;
     zb_ping_set_ping_indication_cb(benchmark_ping_evt_handler);
     zb_ping_set_ping_event_cb(benchmark_ping_evt_handler);
-    // APP_ERROR_CHECK(err_code);
+    printk("Benchmark component has been initialized");
 }
 
 uint32_t benchmark_test_init(benchmark_configuration_t * p_configuration, benchmark_callback_t callback)
@@ -782,13 +782,13 @@ uint32_t benchmark_peer_discover(void)
 {
     if (m_state != TEST_IDLE)
     {
-        // LOG_ERROR("Stop current test in order to start peer discovery.");
+        printk("Stop current test in order to start peer discovery.");
         return (uint32_t)RET_ERROR;
     }
 
     if (mp_test_configuration == NULL)
     {
-        // LOG_ERROR("Provide test configuration before starting a peer discovery.");
+        printk("Provide test configuration before starting a peer discovery.");
         return (uint32_t)RET_ERROR;
     }
 
