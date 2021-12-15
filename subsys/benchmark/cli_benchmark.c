@@ -1,5 +1,7 @@
 /*$$$LICENCE_NORDIC_STANDARD<2018>$$$*/
 
+#include <logging/log.h>
+
 #include "commands.h"
 #include "app_scheduler.h"
 #include "nrf_log.h"
