@@ -13,7 +13,7 @@ zephyr_library_sources(
   zigbee/zigbee_benchmark.c
   zigbee/zigbee_protocol.c
   zigbee/zigbee_timer.c
-  # zigbee/zigbee_zcl_commands.c
+  zigbee/zigbee_zcl_commands.c
   # zigbee/zigbee_bm_cli.c
   # zigbee/zigbee_commands.c
   stub/stub_imp.c

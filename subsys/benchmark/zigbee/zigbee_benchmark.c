@@ -10,6 +10,7 @@
 #include "benchmark_api.h"
 #include "benchmark_zigbee_common.h"
 #include "zigbee_cli_ping_types.h"
+#include "zigbee_benchmark_internal.h"
 
 
 #if defined ZIGBEE_NRF_RADIO_STATISTICS
@@ -683,6 +684,9 @@ void benchmark_init(void)
     mp_test_configuration = NULL;
     zb_ping_set_ping_indication_cb(benchmark_ping_evt_handler);
     zb_ping_set_ping_event_cb(benchmark_ping_evt_handler);
+
+    ZB_AF_SET_ENDPOINT_HANDLER(zb_cli_get_endpoint(), zigbee_bm_ep_handler);
+
     printk("Benchmark component has been initialized");
 }
 
