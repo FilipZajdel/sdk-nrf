@@ -23,6 +23,10 @@
 #define CMD_ZB_PING_ARG_NO_ECHO "--no-echo"
 #define CMD_ZB_PING_ARG_REQ_ACK "--aps-ack"
 
+#define BENCHMARK_THREAD_STACK_SIZE 1024
+#define BENCHMARK_THREAD_PRIO       3
+#define BENCHMARK_THREAD_OPTS       0
+
 typedef union
 {
     zb_ieee_addr_t arr_addr;
@@ -33,6 +37,8 @@ typedef char cmd_arg_t[CMD_SHELL_ARG_STRLEN];
 
 static void discovery_timeout(struct k_timer *timer);
 
+K_THREAD_STACK_DEFINE(benchmark_thread_stack, BENCHMARK_THREAD_STACK_SIZE);
+
 K_TIMER_DEFINE(discovery_timer, discovery_timeout, NULL);
 
 static zb_time_t                     m_start_time;
@@ -42,8 +48,9 @@ static benchmark_result_t            m_remote_result;
 static benchmark_callback_t          mp_callback;
 static benchmark_peer_db_t           m_peer_information;
 static benchmark_address_context_t   m_peer_addresses[BENCHMARK_MAX_PEER_NUMBER];
-static benchmark_configuration_t   * mp_test_configuration;
+static benchmark_configuration_t    *mp_test_configuration;
 static benchmark_test_state_t        m_state = TEST_IDLE;
+static struct k_thread               benchmark_thread;
 
 static benchmark_status_t m_test_status =
 {
@@ -679,13 +686,27 @@ void zigbee_benchmark_test_abort(void)
     benchmark_test_stop();
 }
 
+static void benchmark_thread_loop(void *p1, void *p2, void *p3)
+{
+    while (true)
+    {
+        benchmark_process();
+    }
+}
+
 void benchmark_init(void)
 {
     mp_test_configuration = NULL;
+
     zb_ping_set_ping_indication_cb(benchmark_ping_evt_handler);
     zb_ping_set_ping_event_cb(benchmark_ping_evt_handler);
 
     ZB_AF_SET_ENDPOINT_HANDLER(zb_cli_get_endpoint(), zigbee_bm_ep_handler);
+
+    k_thread_create(&benchmark_thread, benchmark_thread_stack,
+                    BENCHMARK_THREAD_STACK_SIZE, benchmark_thread_loop,
+                    NULL, NULL, NULL, BENCHMARK_THREAD_PRIO,
+                    BENCHMARK_THREAD_OPTS, K_NO_WAIT);
 
     printk("Benchmark component has been initialized");
 }
