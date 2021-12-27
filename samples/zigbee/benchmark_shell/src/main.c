@@ -233,7 +233,6 @@ void main(void)
 
 	app_clusters_attr_init();
 
-
 	benchmark_init();
 
 	/* Register handlers to identify notifications */
