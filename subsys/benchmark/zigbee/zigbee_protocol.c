@@ -20,12 +20,6 @@
 #error Define ZB_ROUTER_ROLE to compile CLI agent (Router) source code.
 #endif
 
-typedef struct cli_agent_ctx_s
-{
-  zb_uint8_t role;
-} cli_agent_ctx_t;
-
-static cli_agent_ctx_t    m_device_ctx;
 static zb_uint8_t         m_attr_zcl_version   = ZB_ZCL_VERSION;
 static zb_uint8_t         m_attr_power_source  = ZB_ZCL_BASIC_POWER_SOURCE_UNKNOWN;
 static zb_uint16_t        m_attr_identify_time = 0;
