@@ -1,12 +1,13 @@
 /*$$$LICENCE_NORDIC_STANDARD<2018>$$$*/
 
-#include <logging/log.h>
+#include <zephyr.h>
+#include <assert.h>
+#include <stdlib.h>
+#include <shell/shell.h>
 
-#include "commands.h"
-#include "app_scheduler.h"
-#include "nrf_log.h"
+#include <benchmark_cli_util.h>
 #include "protocol_api.h"
-#include "cpu_utilization.h"
+// #include "cpu_utilization.h"
 #include "cli_suppress.h"
 
 #define DECIMAL_PRECISION 100
@@ -14,9 +15,9 @@
 
 static void print_test_results(benchmark_event_context_t * p_context);
 
-nrf_cli_t const                  * mp_cli_print;
-static benchmark_peer_db_t       * mp_peer_db;
-static benchmark_configuration_t   m_test_configuration =
+struct shell const *p_shell;
+static benchmark_peer_db_t *mp_peer_db;
+static benchmark_configuration_t m_test_configuration =
 {
     .length       = 64,
     .ack_timeout  = 200,
@@ -24,7 +25,12 @@ static benchmark_configuration_t   m_test_configuration =
     .mode         = BENCHMARK_MODE_ACK,
 };
 
-static const char * configuration_mode_name_get(benchmark_mode_t * p_mode)
+static bool shell_help_requested(const struct shell *shell, int argc, char **argv)
+{
+    return strcmp(argv[0], "help") == 0;
+}
+
+static const char *configuration_mode_name_get(benchmark_mode_t * p_mode)
 {
     switch (*(p_mode))
     {
@@ -42,40 +48,39 @@ static const char * configuration_mode_name_get(benchmark_mode_t * p_mode)
     }
 }
 
-static void discovered_peers_print(void * pp_cli, uint16_t event_size)
+static void discovered_peers_print(void *pp_shell, uint16_t event_size)
 {
-    nrf_cli_t * p_cli = *((nrf_cli_t **)pp_cli);
+    struct shell *shell = *((struct shell **)pp_shell);
 
-    UNUSED_PARAMETER(event_size);
+    (void)event_size;
 
     if (mp_peer_db != NULL)
     {
-        protocol_cmd_peer_db_get(p_cli, mp_peer_db);
-        print_done(p_cli);
+        protocol_cmd_peer_db_get(shell, mp_peer_db);
+        print_done(shell);
     }
     else
     {
-        print_error(p_cli, "The list of known peers is empty. Discover peers and try again.");
+        print_error(shell, "The list of known peers is empty. Discover peers and try again.");
     }
 }
 
 static void benchmark_evt_handler(benchmark_evt_t * p_evt)
 {
     uint16_t peer_count;
-    uint32_t err_code;
 
     switch (p_evt->evt)
     {
         case BENCHMARK_TEST_COMPLETED:
-            NRF_LOG_INFO("Test completed.");
+            printk("Test completed.");
             cli_suppress_disable();
             print_test_results(&(p_evt->context));
-            benchmark_ble_flood_stop();
+            // benchmark_ble_flood_stop();
             break;
 
         case BENCHMARK_TEST_STARTED:
-            ASSERT(!protocol_is_error(p_evt->context.error));
-            NRF_LOG_INFO("Test started.");
+            assert(!protocol_is_error(p_evt->context.error));
+            printk("Test started.");
             cli_suppress_enable();
             break;
 
@@ -84,14 +89,14 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
 
             if (!protocol_is_error(p_evt->context.error))
             {
-                NRF_LOG_INFO("Test successfully stopped.");
+                printk("Test successfully stopped.");
             }
             else
             {
-                NRF_LOG_INFO("Test stopped with errors. Error code: %u", p_evt->context.error);
-                if (mp_cli_print)
+                printk("Test stopped with errors. Error code: %u", p_evt->context.error);
+                if (p_shell)
                 {
-                    nrf_cli_fprintf(mp_cli_print, NRF_CLI_ERROR, "Error: Test stopped with errors. Error code: %u\r\n", p_evt->context.error);
+                    shell_error(p_shell, "Error: Test stopped with errors. Error code: %u\r\n", p_evt->context.error);
                 }
             }
             break;
@@ -109,14 +114,15 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
                 mp_peer_db = NULL;
             }
 
-            NRF_LOG_INFO("Discovery completed, found %d peers.", peer_count);
+            printk("Discovery completed, found %d peers.", peer_count);
 
-            err_code = app_sched_event_put(&mp_cli_print, sizeof(mp_cli_print), discovered_peers_print);
-            ASSERT(err_code == NRF_SUCCESS);
+            // err_code = app_sched_event_put(&p_shell, sizeof(p_shell), discovered_peers_print);
+            // ASSERT(err_code == NRF_SUCCESS);
+            discovered_peers_print(&p_shell, sizeof(p_shell));
             break;
 
         default:
-            NRF_LOG_ERROR("Unknown benchmark_evt.");
+            printk("Unknown benchmark_evt.");
             break;
     };
 }
@@ -132,244 +138,232 @@ const benchmark_peer_entry_t * benchmark_peer_selected_get(void)
 }
 
 /** Common commands, API used by all benchmark commands */
-void print_done(nrf_cli_t const * p_cli)
+void print_done(const struct shell *shell)
 {
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "Done\r\n");
+    shell_info(shell, "Done\r\n");
 }
 
-void print_error(nrf_cli_t const * p_cli, char * p_reason)
+void print_error(const struct shell *shell, char *what)
 {
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "Error: %s\r\n", p_reason);
+    shell_error(shell, "Error: %s\r\n", what);
 }
 
-void cmd_default(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+void cmd_default(const struct shell *shell, size_t argc, char ** argv)
 {
-    if ((argc == 1) || nrf_cli_help_requested(p_cli))
+    if ((argc == 1) || shell_help_requested(shell, argc, argv))
     {
-        nrf_cli_help_print(p_cli, NULL, 0);
+        shell_help(shell);
     }
     else
     {
-        nrf_cli_fprintf(p_cli,
-                        NRF_CLI_ERROR,
-                        "Error: %s:%s%s\r\n",
-                        argv[0],
-                        " unknown parameter: ",
-                        argv[1]);
+        shell_error(shell, "Error: %s: unknown parameter: %s\r\n", argv[0], argv[1]);
     }
 }
 
 /** Test configuration commands */
-void cmd_config_get(const nrf_cli_t * p_cli, size_t argc, char ** argv)
+void cmd_config_get(const struct shell *shell, size_t argc, char ** argv)
 {
     if (argc > 1)
     {
         // If unknown subcommand was passed.
-        cmd_default(p_cli, argc, argv);
+        cmd_default(shell, argc, argv);
         return;
     }
 
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "\n    === Test settings ===\r\n");
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "Mode:               %s\r\n", configuration_mode_name_get(&m_test_configuration.mode));
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "ACK Timeout:        %d [ms]\r\n", m_test_configuration.ack_timeout);
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "Packet count:       %d\r\n", m_test_configuration.count);
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "Payload length [B]: %d\r\n", m_test_configuration.length);
+    shell_info(shell, "\n    === Test settings ===\r\n");
+    shell_info(shell, "Mode:               %s\r\n", configuration_mode_name_get(&m_test_configuration.mode));
+    shell_info(shell, "ACK Timeout:        %d [ms]\r\n", m_test_configuration.ack_timeout);
+    shell_info(shell, "Packet count:       %d\r\n", m_test_configuration.count);
+    shell_info(shell, "Payload length [B]: %d\r\n", m_test_configuration.length);
 }
 
-static void cmd_info_get(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_info_get(const struct shell *shell, size_t argc, char ** argv)
 {
     // Test settings
-    cmd_config_get(p_cli, 0, NULL);
+    cmd_config_get(shell, 0, NULL);
 
     // Local node information
-    protocol_cmd_config_get(p_cli);
+    protocol_cmd_config_get(shell);
 
     // Peer information
-    protocol_cmd_peer_get(p_cli, benchmark_peer_selected_get());
+    protocol_cmd_peer_get(shell, benchmark_peer_selected_get());
 
-    print_done(p_cli);
+    print_done(shell);
 }
 
-static void cmd_config_mode_get(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_mode_get(const struct shell *shell, size_t argc, char **argv)
 {
-    if (nrf_cli_help_requested(p_cli))
-    {
-        nrf_cli_help_print(p_cli, NULL, 0);
-        return;
-    }
-
     if (argc > 1)
     {
         // If unknown subcommand was passed.
-        cmd_default(p_cli, argc, argv);
+        cmd_default(shell, argc, argv);
         return;
     }
 
-    nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "%s\r\n", configuration_mode_name_get(&m_test_configuration.mode));
-    print_done(p_cli);
+    shell_info(shell, "%s\r\n", configuration_mode_name_get(&m_test_configuration.mode));
+    print_done(shell);
 }
 
-static void cmd_config_mode_unidirectional_set(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_mode_unidirectional_set(const struct shell *shell, size_t argc, char ** argv)
 {
     m_test_configuration.mode = BENCHMARK_MODE_UNIDIRECTIONAL;
-    print_done(p_cli);
+    print_done(shell);
 }
 
-static void cmd_config_mode_echo_set(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_mode_echo_set(const struct shell *shell, size_t argc, char ** argv)
 {
     m_test_configuration.mode = BENCHMARK_MODE_ECHO;
-    print_done(p_cli);
+    print_done(shell);
 }
 
-static void cmd_config_mode_ack_set(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_mode_ack_set(const struct shell *shell, size_t argc, char ** argv)
 {
     m_test_configuration.mode = BENCHMARK_MODE_ACK;
-    print_done(p_cli);
+    print_done(shell);
 }
 
-static void cmd_config_ack_timeout(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_ack_timeout(const struct shell *shell, size_t argc, char ** argv)
 {
     if (argc > 2)
     {
-        print_error(p_cli, "Too many arguments\r\n");
+        print_error(shell, "Too many arguments\r\n");
         return;
     }
 
     if (argc < 2)
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO,"%d\r\n", m_test_configuration.ack_timeout);
+        shell_info(shell,"%d\r\n", m_test_configuration.ack_timeout);
     }
     else if (argc == 2)
     {
         m_test_configuration.ack_timeout = atoi(argv[1]);
     }
 
-    print_done(p_cli);
+    print_done(shell);
 }
 
-static void cmd_config_packet_count(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_packet_count(const struct shell *shell, size_t argc, char ** argv)
 {
     if (argc > 2)
     {
-        print_error(p_cli, "Too many arguments\r\n");
+        print_error(shell, "Too many arguments\r\n");
         return;
     }
 
     if (argc < 2)
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO,"%d\r\n", m_test_configuration.count);
+        shell_info(shell,"%d\r\n", m_test_configuration.count);
     }
     else if (argc == 2)
     {
         m_test_configuration.count = atoi(argv[1]);
     }
 
-    print_done(p_cli);
+    print_done(shell);
 }
 
-static void cmd_config_packet_length(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_config_packet_length(const struct shell *shell, size_t argc, char ** argv)
 {
     if (argc > 2)
     {
-        print_error(p_cli, "Too many arguments.");
+        print_error(shell, "Too many arguments.");
         return;
     }
 
     if (argc < 2)
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO,"%d\r\n", m_test_configuration.length);
+        shell_info(shell,"%d\r\n", m_test_configuration.length);
     }
     else if (argc == 2)
     {
         m_test_configuration.length = atoi(argv[1]);
     }
 
-    print_done(p_cli);
+    print_done(shell);
 }
 
 /** Peer configuration commands */
-static void cmd_discover_peers(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_discover_peers(const struct shell *shell, size_t argc, char ** argv)
 {
     uint32_t err_code;
 
     // Remember cli used to start the test so results can be printed on the same interface.
-    mp_cli_print = p_cli;
+    p_shell = shell;
 
     err_code = benchmark_test_init(&m_test_configuration, benchmark_evt_handler);
     if (protocol_is_error(err_code))
     {
-        print_error(p_cli, "Failed to configure discovery parameters.");
+        print_error(shell, "Failed to configure discovery parameters.");
     }
 
     err_code = benchmark_peer_discover();
     if (protocol_is_error(err_code))
     {
-        print_error(p_cli, "Failed to sent discovery message.");
+        shell_error(shell, "Failed to sent discovery message.");
     }
 }
 
-static void cmd_display_peers(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_display_peers(const struct shell *shell, size_t argc, char **argv)
 {
-    discovered_peers_print(&p_cli, 0);
+    discovered_peers_print(&shell, 0);
 }
 
-static void cmd_peer_select(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_peer_select(const struct shell *shell, size_t argc, char **argv)
 {
     if (mp_peer_db == NULL)
     {
-        print_error(p_cli, "The list of known peers is empty. Discover peers and try again.");
+        print_error(shell, "The list of known peers is empty. Discover peers and try again.");
         return;
     }
 
     if (argc > 2)
     {
-        print_error(p_cli, "Too many arguments.");
+        print_error(shell, "Too many arguments.");
         return;
     }
 
     if (argc == 1)
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "%d\r\n", mp_peer_db->selected_peer);
-        print_done(p_cli);
+        shell_info(shell, "%d\r\n", mp_peer_db->selected_peer);
+        print_done(shell);
         return;
     }
 
     if (mp_peer_db->peer_count > atoi(argv[1]))
     {
         mp_peer_db->selected_peer = atoi(argv[1]);
-        print_done(p_cli);
+        print_done(shell);
     }
     else
     {
-        print_error(p_cli, "Peer index out of range.");
+        print_error(shell, "Peer index out of range.");
     }
 }
 
-static void print_int(nrf_cli_t const * p_cli, const char * p_description, const char * p_unit, uint32_t value)
+static void print_int(const struct shell *shell, const char *p_description, const char *p_unit, uint32_t value)
 {
     if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "%s: %lu%s\r\n", p_description, value, p_unit);
+        shell_info(shell, "%s: %lu%s\r\n", p_description, value, p_unit);
     }
     else
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "%s: Not supported\r\n", p_description);
+        shell_info(shell, "%s: Not supported\r\n", p_description);
     }
 }
 
-static void print_decimal(nrf_cli_t const * p_cli, const char * p_description, const char * p_unit, uint32_t value)
+static void print_decimal(const struct shell *shell, const char *p_description, const char *p_unit, uint32_t value)
 {
-
     if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
     {
         uint32_t value_int       = value / DECIMAL_PRECISION;
         uint32_t value_remainder = value % DECIMAL_PRECISION;
 
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "%s: %lu.%02lu%s\r\n", p_description, value_int, value_remainder, p_unit);
+        shell_info(shell, "%s: %lu.%02lu%s\r\n", p_description, value_int, value_remainder, p_unit);
     }
     else
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_INFO, "%s: Not supported\r\n", p_description);
+        shell_info(shell, "%s: Not supported\r\n", p_description);
     }
 }
 
@@ -377,20 +371,20 @@ static void dump_config(benchmark_configuration_t * p_config)
 {
     const char * const modes[] = {"Unidirectional", "Echo", "ACK"};
 
-    print_int(mp_cli_print, "        Length", "", p_config->length);
-    print_int(mp_cli_print, "        ACK timeout", "ms", p_config->ack_timeout);
-    print_int(mp_cli_print, "        Count", "", p_config->count);
-    nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "        Mode: %s\r\n", modes[p_config->mode]);
+    print_int(p_shell, "        Length", "", p_config->length);
+    print_int(p_shell, "        ACK timeout", "ms", p_config->ack_timeout);
+    print_int(p_shell, "        Count", "", p_config->count);
+    shell_info(p_shell, "        Mode: %s\r\n", modes[p_config->mode]);
 }
 
 static void dump_status(benchmark_status_t * p_status)
 {
-    nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "        Test in progress: %s\r\n", p_status->test_in_progress ? "True" : "False");
-    nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "        Reset counters: %s\r\n", p_status->reset_counters ? "True" : "False");
-    print_int(mp_cli_print, "        ACKs lost", "", p_status->acks_lost);
-    print_int(mp_cli_print, "        Waiting for ACKs", "", p_status->waiting_for_ack);
-    print_int(mp_cli_print, "        Packets left count", "", p_status->packets_left_count);
-    print_int(mp_cli_print, "        Frame number", "", p_status->frame_number);
+    shell_info(p_shell, "        Test in progress: %s\r\n", p_status->test_in_progress ? "True" : "False");
+    shell_info(p_shell, "        Reset counters: %s\r\n", p_status->reset_counters ? "True" : "False");
+    print_int(p_shell, "        ACKs lost", "", p_status->acks_lost);
+    print_int(p_shell, "        Waiting for ACKs", "", p_status->waiting_for_ack);
+    print_int(p_shell, "        Packets left count", "", p_status->packets_left_count);
+    print_int(p_shell, "        Frame number", "", p_status->frame_number);
 
 
     if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
@@ -401,36 +395,36 @@ static void dump_status(benchmark_status_t * p_status)
             avg = (uint32_t)(p_status->latency.sum / p_status->latency.cnt);
         }
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "        Latency:\r\n");
-        print_decimal(mp_cli_print, "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 1000);
-        print_decimal(mp_cli_print, "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 1000);
-        print_decimal(mp_cli_print, "            Avg", "ms", avg * DECIMAL_PRECISION / 1000);
+        shell_info(p_shell, "        Latency:\r\n");
+        print_decimal(p_shell, "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 1000);
+        print_decimal(p_shell, "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 1000);
+        print_decimal(p_shell, "            Avg", "ms", avg * DECIMAL_PRECISION / 1000);
     }
 }
 
 static void dump_result(benchmark_result_t * p_result)
 {
-    print_decimal(mp_cli_print, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
-    print_int(mp_cli_print, "        Duration", "ms", p_result->duration);
+    print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
+    print_int(p_shell, "        Duration", "ms", p_result->duration);
 
-    nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "        App counters:\r\n");
+    shell_info(p_shell, "        App counters:\r\n");
 
-    print_int(mp_cli_print, "            Bytes received", "B", p_result->rx_counters.bytes_received);
-    print_int(mp_cli_print, "            Packets received", "", p_result->rx_counters.packets_received);
-    print_int(mp_cli_print, "            RX error", "", p_result->rx_counters.rx_error);
-    print_int(mp_cli_print, "            RX total", "", p_result->rx_counters.rx_total);
+    print_int(p_shell, "            Bytes received", "B", p_result->rx_counters.bytes_received);
+    print_int(p_shell, "            Packets received", "", p_result->rx_counters.packets_received);
+    print_int(p_shell, "            RX error", "", p_result->rx_counters.rx_error);
+    print_int(p_shell, "            RX total", "", p_result->rx_counters.rx_total);
 
-    nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "        Mac counters:\r\n");
-    print_int(mp_cli_print, "            TX error", "", p_result->mac_tx_counters.error);
-    print_int(mp_cli_print, "            TX total", "", p_result->mac_tx_counters.total);
+    shell_info(p_shell, "        Mac counters:\r\n");
+    print_int(p_shell, "            TX error", "", p_result->mac_tx_counters.error);
+    print_int(p_shell, "            TX total", "", p_result->mac_tx_counters.total);
 }
 
-static void dump_ble_result(benchmark_ble_results_t * p_result)
-{
-    print_int(mp_cli_print,     "        Bytes transferred", "B", p_result->bytes_transfered);
-    print_int(mp_cli_print,     "        Duration", "ms", p_result->duration);
-    print_decimal(mp_cli_print, "        Throughput", "kbps", p_result->throughput * DECIMAL_PRECISION / BPS_TO_KBPS);
-}
+// static void dump_ble_result(benchmark_ble_results_t * p_result)
+// {
+//     print_int(p_shell,     "        Bytes transferred", "B", p_result->bytes_transfered);
+//     print_int(p_shell,     "        Duration", "ms", p_result->duration);
+//     print_decimal(p_shell, "        Throughput", "kbps", p_result->throughput * DECIMAL_PRECISION / BPS_TO_KBPS);
+// }
 
 /** Test execution commands */
 static void print_test_results(benchmark_event_context_t * p_context)
@@ -442,7 +436,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
         return;
     }
 
-    nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n    === Test Finished ===\r\n");
+    shell_info(p_shell, "\r\n    === Test Finished ===\r\n");
 
     if ((p_results->p_local_status != NULL) && (p_results->p_local_result != NULL) && (p_results->p_local_result->duration != 0))
     {
@@ -454,11 +448,11 @@ static void print_test_results(benchmark_event_context_t * p_context)
         uint32_t throughput                               = (uint32_t)((txed_bytes * 1000ULL) / (test_duration * 128ULL));
         uint32_t throughput_rtx                           = (uint32_t)((acked_bytes * 1000ULL) / (test_duration * 128ULL));
 
-        benchmark_ble_ping_results_t * p_ble_ping_results = benchmark_ble_continuous_results_get();
+        // benchmark_ble_ping_results_t * p_ble_ping_results = benchmark_ble_continuous_results_get();
 
-        print_int(mp_cli_print, "Test duration", "ms", p_results->p_local_result->duration);
+        print_int(p_shell, "Test duration", "ms", p_results->p_local_result->duration);
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
+        shell_info(p_shell, "\r\n");
 
         if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
         {
@@ -468,28 +462,28 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 avg = (uint32_t)(p_results->p_local_status->latency.sum / p_results->p_local_status->latency.cnt);
             }
 
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "Latency:\r\n");
-            print_decimal(mp_cli_print, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
-            print_decimal(mp_cli_print, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
-            print_decimal(mp_cli_print, "    Avg", "ms", avg * DECIMAL_PRECISION / 1000);
+            shell_info(p_shell, "Latency:\r\n");
+            print_decimal(p_shell, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
+            print_decimal(p_shell, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
+            print_decimal(p_shell, "    Avg", "ms", avg * DECIMAL_PRECISION / 1000);
 
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
+            shell_info(p_shell, "\r\n");
         }
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "Average CPU utilization:\r\n");
-        print_decimal(mp_cli_print, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
+        shell_info(p_shell, "Average CPU utilization:\r\n");
+        print_decimal(p_shell, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
 
         if (p_results->p_remote_result != NULL)
         {
-            print_decimal(mp_cli_print, "    Remote", "%", p_results->p_remote_result->cpu_utilization * DECIMAL_PRECISION / 100);
+            print_decimal(p_shell, "    Remote", "%", p_results->p_remote_result->cpu_utilization * DECIMAL_PRECISION / 100);
         }
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
+        shell_info(p_shell, "\r\n");
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "Unidirectional:\r\n");
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO,"    Throughput: %lu kbps\r\n", throughput);
+            shell_info(p_shell, "Unidirectional:\r\n");
+            shell_info(p_shell,"    Throughput: %lu kbps\r\n", throughput);
         }
         else
         {
@@ -500,18 +494,18 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 per = (uint32_t)((DECIMAL_PRECISION * 100ULL * (packets_sent - packets_acked)) / packets_sent);
             }
 
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "Without retransmissions:\r\n");
-            print_decimal(mp_cli_print, "    PER", "%", per);
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    Throughput: %lu kbps\r\n", throughput);
+            shell_info(p_shell, "Without retransmissions:\r\n");
+            print_decimal(p_shell, "    PER", "%", per);
+            shell_info(p_shell, "    Throughput: %lu kbps\r\n", throughput);
 
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
+            shell_info(p_shell, "\r\n");
 
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "With retransmissions:\r\n");
-            print_decimal(mp_cli_print, "    PER", "%", 0);
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    Throughput: %lu kbps\r\n", throughput_rtx);
+            shell_info(p_shell, "With retransmissions:\r\n");
+            print_decimal(p_shell, "    PER", "%", 0);
+            shell_info(p_shell, "    Throughput: %lu kbps\r\n", throughput_rtx);
         }
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
+        shell_info(p_shell, "\r\n");
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
@@ -522,7 +516,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
             {
                 mac_per = (uint32_t)((DECIMAL_PRECISION * 100ULL * mac_tx_errors) / mac_tx_attempts);
             }
-            print_decimal(mp_cli_print, "MAC PER", "%", mac_per);
+            print_decimal(p_shell, "MAC PER", "%", mac_per);
         }
         else
         {
@@ -535,138 +529,141 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 {
                     mac_per = (uint32_t)((DECIMAL_PRECISION * 100ULL * mac_tx_errors) / mac_tx_attempts);
                 }
-                print_decimal(mp_cli_print, "MAC PER", "%", mac_per);
+                print_decimal(p_shell, "MAC PER", "%", mac_per);
             }
             else
             {
-                nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "MAC Counters:\r\n");
-                print_int(mp_cli_print, "    MAC TX Total", "", p_results->p_local_result->mac_tx_counters.total);
-                print_int(mp_cli_print, "    MAC TX Err", "", p_results->p_local_result->mac_tx_counters.error);
+                shell_info(p_shell, "MAC Counters:\r\n");
+                print_int(p_shell, "    MAC TX Total", "", p_results->p_local_result->mac_tx_counters.total);
+                print_int(p_shell, "    MAC TX Err", "", p_results->p_local_result->mac_tx_counters.error);
             }
         }
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
-
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "Raw data:\r\n");
-
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    Config:\r\n");
+        shell_info(p_shell, "\r\n");
+        shell_info(p_shell, "Raw data:\r\n");
+        shell_info(p_shell, "    Config:\r\n");
         dump_config(&m_test_configuration);
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    Status:\r\n");
+        shell_info(p_shell, "    Status:\r\n");
         dump_status(p_results->p_local_status);
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    Local:\r\n");
+        shell_info(p_shell, "    Local:\r\n");
         dump_result(p_results->p_local_result);
 
         if (p_results->p_remote_result != NULL)
         {
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    Remote:\r\n");
+            shell_info(p_shell, "    Remote:\r\n");
             dump_result(p_results->p_remote_result);
         }
 
-        if (p_ble_ping_results != NULL)
-        {
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    BLE local:\r\n");
-            dump_ble_result(&p_ble_ping_results->local_results);
+        // if (p_ble_ping_results != NULL)
+        // {
+        //     shell_info(p_shell, "    BLE local:\r\n");
+        //     dump_ble_result(&p_ble_ping_results->local_results);
 
-            nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "    BLE remote:\r\n");
-            dump_ble_result(&p_ble_ping_results->remote_results);
-        }
+        //     shell_info(p_shell, "    BLE remote:\r\n");
+        //     dump_ble_result(&p_ble_ping_results->remote_results);
+        // }
 
-        nrf_cli_fprintf(mp_cli_print, NRF_CLI_INFO, "\r\n");
+        shell_info(p_shell, "\r\n");
     }
 
-    print_done(mp_cli_print);
+    print_done(p_shell);
 }
 
-static void cmd_test_start(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_test_start(const struct shell *shell, size_t argc, char ** argv)
 {
     uint32_t err_code;
 
     if (mp_peer_db == NULL)
     {
-        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR, "No peer selected; run:\r\n     test peer discover \r\nto find peers\r\n");
+        shell_error(shell, "No peer selected; run:\r\n     test peer discover \r\nto find peers\r\n");
         return;
     }
 
     // Remember cli used to start the test so results can be printed on the same interface.
-    mp_cli_print = p_cli;
+    p_shell = shell;
 
-    benchmark_ble_flood_start();
+    // benchmark_ble_flood_start();
 
     err_code = benchmark_test_init(&m_test_configuration, benchmark_evt_handler);
     if (protocol_is_error(err_code))
     {
-        print_error(p_cli, "Failed to configure test parameters.");
+        print_error(shell, "Failed to configure test parameters.");
         return;
     }
 
     err_code = benchmark_test_start();
     if (protocol_is_error(err_code))
     {
-        print_error(p_cli, "Failed to start test.");
+        print_error(shell, "Failed to start test.");
     }
 }
 
-static void cmd_test_stop(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_test_stop(const struct shell *shell, size_t argc, char ** argv)
 {
     uint32_t err_code = benchmark_test_stop();
     if (protocol_is_error(err_code))
     {
-        print_error(p_cli, "Failed to stop test.");
+        print_error(shell, "Failed to stop test.");
     }
     else
     {
-        print_done(p_cli);
+        print_done(shell);
     }
 }
 
-static void cmd_peer_test_results(nrf_cli_t const * p_cli, size_t argc, char ** argv)
+static void cmd_peer_test_results(const struct shell *shell, size_t argc, char ** argv)
 {
     uint32_t err_code = benchmark_peer_results_request_send();
 
     if (protocol_is_error(err_code))
     {
-        print_error(p_cli, "Failed to send test results request.");
+        print_error(shell, "Failed to send test results request.");
         return;
     }
 }
 
+SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_mode,
+    SHELL_CMD_ARG(ack, NULL, "Peer replies with a short acknowledgment",
+                  cmd_config_mode_ack_set, 1, 0),
+    SHELL_CMD_ARG(echo, NULL, "Peer replies with the same data",
+                  cmd_config_mode_echo_set, 1, 0),
+    SHELL_CMD_ARG(unidirectional, NULL, "Transmission in the single direction",
+                  cmd_config_mode_unidirectional_set, 1, 0),
+    SHELL_SUBCMD_SET_END
+);
 
-NRF_CLI_CREATE_STATIC_SUBCMD_SET(m_test_configure_mode_cmds)
-{
-    NRF_CLI_CMD(ack,            NULL, "Peer replies with a short acknowledgment", cmd_config_mode_ack_set),
-    NRF_CLI_CMD(echo,           NULL, "Peer replies with the same data",          cmd_config_mode_echo_set),
-    NRF_CLI_CMD(unidirectional, NULL, "Transmission in the single direction",     cmd_config_mode_unidirectional_set),
-    NRF_CLI_SUBCMD_SET_END
-};
+SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_peer,
+    SHELL_CMD_ARG(discover, NULL, "Discover available peers", cmd_discover_peers, 1, 0),
+    SHELL_CMD_ARG(list,     NULL, "Display found peers",      cmd_display_peers, 1, 0),
+    SHELL_CMD_ARG(results,  NULL, "Display results",          cmd_peer_test_results, 1, 0),
+    SHELL_CMD_ARG(select,   NULL, "Select peer from a list",  cmd_peer_select, 1, 1),
+    SHELL_SUBCMD_SET_END
+);
 
-NRF_CLI_CREATE_STATIC_SUBCMD_SET(m_test_configure_cmds)
-{
-    NRF_CLI_CMD(ack-timeout,   NULL,                        "Set time after we stop waiting for the acknowledgment from the peer in milliseconds", cmd_config_ack_timeout),
-    NRF_CLI_CMD(count,         NULL,                        "Set number of packets to be sent",                                                    cmd_config_packet_count),
-    NRF_CLI_CMD(length,        NULL,                        "Set UDP payload length in bytes",                                                     cmd_config_packet_length),
-    NRF_CLI_CMD(mode,          &m_test_configure_mode_cmds, "Set test type",                                                                       cmd_config_mode_get),
-    NRF_CLI_SUBCMD_SET_END
-};
+SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_cmds,
+    SHELL_CMD_ARG(ack-timeout, NULL,
+        "Set time after we stop waiting for the acknowledgment from the peer in milliseconds",
+                  cmd_config_ack_timeout, 1, 1),
+    SHELL_CMD_ARG(count, NULL, "Set number of packets to be sent",
+                  cmd_config_packet_count, 1, 1),
+    SHELL_CMD_ARG(length, NULL, "Set UDP payload length in bytes",
+                  cmd_config_packet_length, 1, 1),
+    SHELL_CMD_ARG(mode, &test_configure_mode, "Set test type",
+                  cmd_config_mode_get, 2, 0),
+    SHELL_SUBCMD_SET_END
+);
 
-NRF_CLI_CREATE_STATIC_SUBCMD_SET(m_test_configure_peer_cmds)
-{
-    NRF_CLI_CMD(discover, NULL, "Discover available peers", cmd_discover_peers),
-    NRF_CLI_CMD(list,     NULL, "Display found peers",      cmd_display_peers),
-    NRF_CLI_CMD(results,  NULL, "Display results",          cmd_peer_test_results),
-    NRF_CLI_CMD(select,   NULL, "Select peer from a list",  cmd_peer_select),
-    NRF_CLI_SUBCMD_SET_END
-};
+SHELL_STATIC_SUBCMD_SET_CREATE(benchmark_cmds,
+    SHELL_CMD_ARG(configure, &test_configure_cmds, "Configure the test",
+                  cmd_default, 1, 1),
+    SHELL_CMD_ARG(info, NULL, "Print current configuration", cmd_info_get, 1, 0),
+    SHELL_CMD_ARG(peer, &test_configure_peer, "Configure the peer receiving data",
+                  cmd_default, 1, 0),
+    SHELL_CMD_ARG(start, NULL, "Start the test", cmd_test_start, 1, 0),
+    SHELL_CMD_ARG(stop, NULL, "Stop the test", cmd_test_stop, 1, 0),
+    SHELL_SUBCMD_SET_END
+);
 
-NRF_CLI_CREATE_STATIC_SUBCMD_SET(m_test_cmds)
-{
-    NRF_CLI_CMD(configure, &m_test_configure_cmds,      "Configure the test",                cmd_default),
-    NRF_CLI_CMD(info,      NULL,                        "Print current configuration",       cmd_info_get),
-    NRF_CLI_CMD(peer,      &m_test_configure_peer_cmds, "Configure the peer receiving data", cmd_default),
-    NRF_CLI_CMD(start,     NULL,                        "Start the test",                    cmd_test_start),
-    NRF_CLI_CMD(stop,      NULL,                        "Stop the test",                     cmd_test_stop),
-    NRF_CLI_SUBCMD_SET_END
-};
-
-NRF_CLI_CMD_REGISTER(test, &m_test_cmds, "Benchmark commands", cmd_default);
+SHELL_CMD_REGISTER(test, &benchmark_cmds, "Benchmark commands", cmd_default);

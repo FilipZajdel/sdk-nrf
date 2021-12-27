@@ -22,7 +22,7 @@ static zb_bool_t  m_enabled = ZB_FALSE;
  */
 static void timer_timeout_zboss_cb(zb_bufid_t bufid)
 {
-    UNUSED_PARAMETER(bufid);
+    (void)bufid;
 
     if ((m_enabled == ZB_TRUE) && (m_timer_cb))
     {

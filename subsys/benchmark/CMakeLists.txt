@@ -10,12 +10,16 @@ zephyr_library()
 
 zephyr_library_sources(
   benchmark_util.c
+  cli_benchmark.c
+  # cli_cpu.c
+  # cli_remote.c
+  cli_suppress.c
   zigbee/zigbee_benchmark.c
   zigbee/zigbee_protocol.c
   zigbee/zigbee_timer.c
   zigbee/zigbee_zcl_commands.c
   # zigbee/zigbee_bm_cli.c
-  # zigbee/zigbee_commands.c
+  zigbee/zigbee_commands.c
   stub/stub_imp.c
 )
 
