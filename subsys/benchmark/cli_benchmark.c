@@ -140,12 +140,12 @@ const benchmark_peer_entry_t * benchmark_peer_selected_get(void)
 /** Common commands, API used by all benchmark commands */
 void print_done(const struct shell *shell)
 {
-    shell_info(shell, "Done\r\n");
+    printk("Done\r\n");
 }
 
 void print_error(const struct shell *shell, char *what)
 {
-    shell_error(shell, "Error: %s\r\n", what);
+    printk("Error: %s\r\n", what);
 }
 
 void cmd_default(const struct shell *shell, size_t argc, char ** argv)
@@ -170,11 +170,11 @@ void cmd_config_get(const struct shell *shell, size_t argc, char ** argv)
         return;
     }
 
-    shell_info(shell, "\n    === Test settings ===\r\n");
-    shell_info(shell, "Mode:               %s\r\n", configuration_mode_name_get(&m_test_configuration.mode));
-    shell_info(shell, "ACK Timeout:        %d [ms]\r\n", m_test_configuration.ack_timeout);
-    shell_info(shell, "Packet count:       %d\r\n", m_test_configuration.count);
-    shell_info(shell, "Payload length [B]: %d\r\n", m_test_configuration.length);
+    shell_info(shell, "=== Test settings ===");
+    shell_info(shell, "Mode:               %s", configuration_mode_name_get(&m_test_configuration.mode));
+    shell_info(shell, "ACK Timeout:        %d [ms]", m_test_configuration.ack_timeout);
+    shell_info(shell, "Packet count:       %d", m_test_configuration.count);
+    shell_info(shell, "Payload length [B]: %d", m_test_configuration.length);
 }
 
 static void cmd_info_get(const struct shell *shell, size_t argc, char ** argv)
@@ -187,8 +187,6 @@ static void cmd_info_get(const struct shell *shell, size_t argc, char ** argv)
 
     // Peer information
     protocol_cmd_peer_get(shell, benchmark_peer_selected_get());
-
-    print_done(shell);
 }
 
 static void cmd_config_mode_get(const struct shell *shell, size_t argc, char **argv)
@@ -344,11 +342,11 @@ static void print_int(const struct shell *shell, const char *p_description, cons
 {
     if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
     {
-        shell_info(shell, "%s: %lu%s\r\n", p_description, value, p_unit);
+        printk("%s: %lu%s\r\n", p_description, value, p_unit);
     }
     else
     {
-        shell_info(shell, "%s: Not supported\r\n", p_description);
+        printk("%s: Not supported\r\n", p_description);
     }
 }
 
