@@ -9,15 +9,15 @@
 
 void protocol_cmd_peer_db_get(const struct shell *shell, const benchmark_peer_db_t * p_peers)
 {
-    shell_info(shell, "\r\n# ||    Device ID   || 16-bit network address\r\n");
+    printk("\r\n# ||    Device ID   || 16-bit network address\r\n");
 
     for (uint16_t i = 0; i < p_peers->peer_count; i++)
     {
-        shell_info(shell, "[%d]:  %08x%08x  %04x\r\n",
-                   i,
-                   DEVICE_ID_HI(p_peers->peer_table[i].device_id),
-                   DEVICE_ID_LO(p_peers->peer_table[i].device_id),
-                   p_peers->peer_table[i].p_address->nwk_addr);
+        printk("[%d]:  %08x%08x  %04x\r\n",
+               i,
+               DEVICE_ID_HI(p_peers->peer_table[i].device_id),
+               DEVICE_ID_LO(p_peers->peer_table[i].device_id),
+               p_peers->peer_table[i].p_address->nwk_addr);
     }
 }
 
@@ -31,18 +31,18 @@ void protocol_cmd_config_get(const struct shell *shell)
     zb_get_long_address(addr);
     short_addr = zb_address_short_by_ieee(addr);
 
-    shell_info(shell, "\r\n\t=== Local node information ===\r\n");
-    shell_info(shell, "Device ID:   %08x%08x\r\n",
+    shell_info(shell, "\t=== Local node information ===");
+    shell_info(shell, "Device ID:   %08x%08x",
                DEVICE_ID_HI(device_id),
                DEVICE_ID_LO(device_id));
 
     if (short_addr != ZB_UNKNOWN_SHORT_ADDR)
     {
-        shell_info(shell, "Network address: %04x\r\n", short_addr);
+        shell_info(shell, "Network address: %04x", short_addr);
     }
     else
     {
-        shell_info(shell, "Network address: none\r\n");
+        shell_info(shell, "Network address: none");
     }
 
     shell_info(shell, "Zigbee Role: ");
@@ -63,7 +63,6 @@ void protocol_cmd_config_get(const struct shell *shell)
     {
         shell_info(shell, "zed");
     }
-    shell_info(shell, "\r\n");
 }
 
 void protocol_cmd_peer_get(const struct shell *shell, const benchmark_peer_entry_t *p_peer)
@@ -79,9 +78,9 @@ void protocol_cmd_peer_get(const struct shell *shell, const benchmark_peer_entry
         short_addr   = p_peer->p_address->nwk_addr;
     }
 
-    shell_info(shell, "\r\n\t=== Peer information ===\r\n");
-    shell_info(shell, "Device ID:   %08x%08x\r\n", device_id_hi, device_id_lo);
-    shell_info(shell, "Network address: %04x\r\n", short_addr);
+    shell_info(shell, "\t=== Peer information ===");
+    shell_info(shell, "Device ID:   %08x%08x", device_id_hi, device_id_lo);
+    shell_info(shell, "Network address: %04x", short_addr);
 }
 
 void protocol_cmd_remote_send(const struct shell *shell, const nrf_cli_t * p_peer_cli, size_t argc, char ** argv)

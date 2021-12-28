@@ -59,7 +59,7 @@ static void zigbee_benchmark_frame_error_handler(zb_bufid_t bufid)
  *
  * @param bufid    Reference to a ZBoss buffer
  */
-static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
+zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
 {
     zb_uint16_t           remote_short_addr;
     zb_zcl_parsed_hdr_t * p_cmd_info    = ZB_BUF_GET_PARAM(bufid, zb_zcl_parsed_hdr_t);
@@ -72,7 +72,7 @@ static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
         return ZB_FALSE;
     }
 
-    printk("New benchmark frame received, bufid: %u", bufid);
+    printk("New benchmark frame received, bufid: %u\n", bufid);
     if (p_cmd_info->addr_data.common_data.source.addr_type != ZB_ZCL_ADDR_TYPE_SHORT)
     {
         return ZB_FALSE;
@@ -83,25 +83,25 @@ static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
     {
         zb_zcl_default_resp_payload_t * p_def_resp;
         p_def_resp = ZB_ZCL_READ_DEFAULT_RESP(bufid);
-        printk("Default Response received. Command: %u, Status: %u",
+        printk("Default Response received. Command: %u, Status: %u\n",
                       p_def_resp->command_id, p_def_resp->status);
         zigbee_benchmark_command_response_handler((zigbee_benchmark_ctrl_t)p_def_resp->command_id, (zb_zcl_status_t)p_def_resp->status);
     }
     else if (p_cmd_info->cmd_id == TEST_START_REQUEST)
     {
-        printk("Remote peer 0x%04x started benchmark test.", remote_short_addr);
+        printk("Remote peer 0x%04x started benchmark test.\n", remote_short_addr);
         zb_zcl_status = zigbee_benchmark_test_start_slave();
         send_response = ZB_TRUE;
     }
     else if (p_cmd_info->cmd_id == TEST_STOP_REQUEST)
     {
-        printk("Remote peer 0x%04x stopped benchmark test.", remote_short_addr);
+        printk("Remote peer 0x%04x stopped benchmark test.\n", remote_short_addr);
         zb_zcl_status = zigbee_benchmark_test_stop_slave();
         send_response = ZB_TRUE;
     }
     else if (p_cmd_info->cmd_id == TEST_RESULTS_REQUEST)
     {
-        printk("Remote peer 0x%04x asked for benchmark results.", remote_short_addr);
+        printk("Remote peer 0x%04x asked for benchmark results.\n", remote_short_addr);
         zb_zcl_status = zigbee_benchmark_peer_results_response_send(bufid, remote_short_addr, zigbee_benchmark_local_result_get());
         if (zb_zcl_status != ZB_ZCL_STATUS_SUCCESS)
         {
@@ -115,7 +115,7 @@ static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
     else if (p_cmd_info->cmd_id == TEST_RESULTS_RESPONSE)
     {
         zb_uint8_t len = zb_buf_len(bufid);
-        printk("Remote peer 0x%04x sent benchmark results.", remote_short_addr);
+        printk("Remote peer 0x%04x sent benchmark results.\n", remote_short_addr);
         if (len != sizeof(benchmark_result_t))
         {
             zigbee_benchmark_test_abort();
@@ -127,7 +127,7 @@ static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
     }
     else
     {
-        printk("Unsupported benchmark command received, cmd_id %u", p_cmd_info->cmd_id);
+        printk("Unsupported benchmark command received, cmd_id %u\n", p_cmd_info->cmd_id);
         zb_zcl_status = ZB_ZCL_STATUS_UNSUP_MANUF_CLUST_CMD;
         send_response = ZB_TRUE;
     }
@@ -140,7 +140,7 @@ static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
             zb_uint8_t cmd_id = p_cmd_info->cmd_id;
 
             (void)zb_buf_reuse(bufid);
-            printk("Send (benchmark) default response. Command: %u, status: %u", p_cmd_info->cmd_id, zb_zcl_status);
+            printk("Send (benchmark) default response. Command: %u, status: %u\n", p_cmd_info->cmd_id, zb_zcl_status);
             ZB_ZCL_SEND_DEFAULT_RESP(bufid, remote_short_addr, ZB_APS_ADDR_MODE_16_ENDP_PRESENT, cli_ep, cli_ep, ZB_AF_HA_PROFILE_ID, BENCHMARK_CUSTOM_CLUSTER, m_seq_num++, cmd_id, zb_zcl_status);
         }
         else
@@ -153,6 +153,7 @@ static zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
 
 zb_uint8_t zigbee_bm_ep_handler(zb_bufid_t bufid)
 {
+    printk("ZIGBEE Benchmark EP handler\n");
     if (zigbee_benchmark_ep_handler(bufid))
     {
         return ZB_TRUE;
@@ -199,7 +200,7 @@ static zb_ret_t zigbee_benchmark_ctrl_request_send(zb_bufid_t bufid, zb_uint16_t
     *(p_cmd_buf++) = ctrl_cmd;  /* Command ID field */
     m_seq_num++;
 
-    printk("Send benchmark control command. ID: %u", ctrl_cmd);
+    printk("Send benchmark control command. ID: %u\n", ctrl_cmd);
     zb_err_code = zb_zcl_finish_and_send_packet(bufid, p_cmd_buf, &remote_addr,
                                                 ZB_APS_ADDR_MODE_16_ENDP_PRESENT, cli_ep, cli_ep,
                                                 ZB_AF_HA_PROFILE_ID, BENCHMARK_CUSTOM_CLUSTER,
@@ -236,7 +237,7 @@ static zb_zcl_status_t zigbee_benchmark_peer_results_response_send(zb_bufid_t bu
     p_cmd_buf += sizeof(benchmark_result_t);
     m_seq_num++;
 
-    printk("Send benchmark results from the remote peer to 0x%04x", peer_addr);
+    printk("Send benchmark results from the remote peer to 0x%04x\n", peer_addr);
     zb_err_code = zb_zcl_finish_and_send_packet(bufid, p_cmd_buf, &remote_addr,
                                                 ZB_APS_ADDR_MODE_16_ENDP_PRESENT, cli_ep, cli_ep,
                                                 ZB_AF_HA_PROFILE_ID, BENCHMARK_CUSTOM_CLUSTER,
@@ -250,8 +251,8 @@ void zigbee_benchmark_peer_results_request_send(zb_bufid_t bufid, zb_uint16_t pe
     zb_ret_t err_code = zigbee_benchmark_ctrl_request_send(bufid, peer_addr, TEST_RESULTS_REQUEST);
     if (err_code != RET_OK)
     {
-        printk("Sending results request (ID: %u) to the remote peer (nwk_addr: 0x%04x) failed with error: %d",
-                        TEST_RESULTS_REQUEST, peer_addr, err_code);
+        printk("Sending results request (ID: %u) to the remote peer (nwk_addr: 0x%04x) failed with error: %d\n",
+               TEST_RESULTS_REQUEST, peer_addr, err_code);
         zigbee_benchmark_test_abort();
     }
 }
@@ -261,8 +262,8 @@ void zigbee_benchmark_peer_start_request_send(zb_bufid_t bufid, zb_uint16_t peer
     zb_ret_t err_code = zigbee_benchmark_ctrl_request_send(bufid, peer_addr, TEST_START_REQUEST);
     if (err_code != RET_OK)
     {
-        printk("Sending test start request (ID: %u) to the remote peer (nwk_addr: 0x%04x) failed with error: %d",
-                        TEST_START_REQUEST, peer_addr, err_code);
+        printk("Sending test start request (ID: %u) to the remote peer (nwk_addr: 0x%04x) failed with error: %d\n",
+               TEST_START_REQUEST, peer_addr, err_code);
         zigbee_benchmark_test_abort();
     }
 }
@@ -272,8 +273,8 @@ void zigbee_benchmark_peer_stop_request_send(zb_bufid_t bufid, zb_uint16_t peer_
     zb_ret_t err_code = zigbee_benchmark_ctrl_request_send(bufid, peer_addr, TEST_STOP_REQUEST);
     if (err_code != RET_OK)
     {
-        printk("Sending test stop request (ID: %u) to the remote peer (nwk_addr: 0x%04x) failed with error: %d",
-                        TEST_STOP_REQUEST, peer_addr, err_code);
+        printk("Sending test stop request (ID: %u) to the remote peer (nwk_addr: 0x%04x) failed with error: %d\n",
+               TEST_STOP_REQUEST, peer_addr, err_code);
         zigbee_benchmark_test_abort();
     }
 }
