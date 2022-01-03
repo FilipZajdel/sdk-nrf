@@ -72,8 +72,8 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
     switch (p_evt->evt)
     {
         case BENCHMARK_TEST_COMPLETED:
-            printk("Test completed.");
-            cli_suppress_disable();
+            printk("Test completed.\n");
+            // cli_suppress_disable();
             print_test_results(&(p_evt->context));
             // benchmark_ble_flood_stop();
             break;
@@ -334,7 +334,7 @@ static void cmd_peer_select(const struct shell *shell, size_t argc, char **argv)
     }
     else
     {
-        print_error(shell, "Peer index out of range.");
+        print_error(shell, "Peer index out of range.\n");
     }
 }
 
@@ -342,11 +342,11 @@ static void print_int(const struct shell *shell, const char *p_description, cons
 {
     if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
     {
-        printk("%s: %lu%s\r\n", p_description, value, p_unit);
+        printk("%s: %lu%s\n", p_description, value, p_unit);
     }
     else
     {
-        printk("%s: Not supported\r\n", p_description);
+        printk("%s: Not supported\n", p_description);
     }
 }
 
@@ -357,11 +357,11 @@ static void print_decimal(const struct shell *shell, const char *p_description, 
         uint32_t value_int       = value / DECIMAL_PRECISION;
         uint32_t value_remainder = value % DECIMAL_PRECISION;
 
-        shell_info(shell, "%s: %lu.%02lu%s\r\n", p_description, value_int, value_remainder, p_unit);
+        shell_info(shell, "%s: %lu.%02lu%s", p_description, value_int, value_remainder, p_unit);
     }
     else
     {
-        shell_info(shell, "%s: Not supported\r\n", p_description);
+        shell_info(shell, "%s: Not supported\n", p_description);
     }
 }
 
@@ -372,13 +372,13 @@ static void dump_config(benchmark_configuration_t * p_config)
     print_int(p_shell, "        Length", "", p_config->length);
     print_int(p_shell, "        ACK timeout", "ms", p_config->ack_timeout);
     print_int(p_shell, "        Count", "", p_config->count);
-    shell_info(p_shell, "        Mode: %s\r\n", modes[p_config->mode]);
+    printk("        Mode: %s\n", modes[p_config->mode]);
 }
 
 static void dump_status(benchmark_status_t * p_status)
 {
-    shell_info(p_shell, "        Test in progress: %s\r\n", p_status->test_in_progress ? "True" : "False");
-    shell_info(p_shell, "        Reset counters: %s\r\n", p_status->reset_counters ? "True" : "False");
+    printk("        Test in progress: %s\n", p_status->test_in_progress ? "True" : "False");
+    printk("        Reset counters: %s\n", p_status->reset_counters ? "True" : "False");
     print_int(p_shell, "        ACKs lost", "", p_status->acks_lost);
     print_int(p_shell, "        Waiting for ACKs", "", p_status->waiting_for_ack);
     print_int(p_shell, "        Packets left count", "", p_status->packets_left_count);
@@ -393,7 +393,7 @@ static void dump_status(benchmark_status_t * p_status)
             avg = (uint32_t)(p_status->latency.sum / p_status->latency.cnt);
         }
 
-        shell_info(p_shell, "        Latency:\r\n");
+        printk("        Latency:\n");
         print_decimal(p_shell, "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 1000);
         print_decimal(p_shell, "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 1000);
         print_decimal(p_shell, "            Avg", "ms", avg * DECIMAL_PRECISION / 1000);
@@ -405,14 +405,14 @@ static void dump_result(benchmark_result_t * p_result)
     print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
     print_int(p_shell, "        Duration", "ms", p_result->duration);
 
-    shell_info(p_shell, "        App counters:\r\n");
+    printk("        App counters:\n");
 
     print_int(p_shell, "            Bytes received", "B", p_result->rx_counters.bytes_received);
     print_int(p_shell, "            Packets received", "", p_result->rx_counters.packets_received);
     print_int(p_shell, "            RX error", "", p_result->rx_counters.rx_error);
     print_int(p_shell, "            RX total", "", p_result->rx_counters.rx_total);
 
-    shell_info(p_shell, "        Mac counters:\r\n");
+    printk("        Mac counters:\n");
     print_int(p_shell, "            TX error", "", p_result->mac_tx_counters.error);
     print_int(p_shell, "            TX total", "", p_result->mac_tx_counters.total);
 }
@@ -427,14 +427,14 @@ static void dump_result(benchmark_result_t * p_result)
 /** Test execution commands */
 static void print_test_results(benchmark_event_context_t * p_context)
 {
-    benchmark_evt_results_t * p_results = &p_context->results;
+    benchmark_evt_results_t *p_results = &p_context->results;
 
     if (p_results->p_remote_result == NULL)
     {
         return;
     }
 
-    shell_info(p_shell, "\r\n    === Test Finished ===\r\n");
+    printk("    === Test Finished ===\n");
 
     if ((p_results->p_local_status != NULL) && (p_results->p_local_result != NULL) && (p_results->p_local_result->duration != 0))
     {
@@ -450,8 +450,6 @@ static void print_test_results(benchmark_event_context_t * p_context)
 
         print_int(p_shell, "Test duration", "ms", p_results->p_local_result->duration);
 
-        shell_info(p_shell, "\r\n");
-
         if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
         {
             uint32_t avg = 0;
@@ -460,15 +458,15 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 avg = (uint32_t)(p_results->p_local_status->latency.sum / p_results->p_local_status->latency.cnt);
             }
 
-            shell_info(p_shell, "Latency:\r\n");
-            print_decimal(p_shell, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
-            print_decimal(p_shell, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
-            print_decimal(p_shell, "    Avg", "ms", avg * DECIMAL_PRECISION / 1000);
-
-            shell_info(p_shell, "\r\n");
+            printk("Latency:\n");
+            // print_decimal(p_shell, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
+            // print_decimal(p_shell, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
+            printk("    Min: %u\n", p_results->p_local_status->latency.min);
+            printk("    Max: %u\n", p_results->p_local_status->latency.max);
+            printk("    Avg: %u\n", avg);
         }
 
-        shell_info(p_shell, "Average CPU utilization:\r\n");
+        printk("Average CPU utilization:\n");
         print_decimal(p_shell, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
 
         if (p_results->p_remote_result != NULL)
@@ -476,12 +474,10 @@ static void print_test_results(benchmark_event_context_t * p_context)
             print_decimal(p_shell, "    Remote", "%", p_results->p_remote_result->cpu_utilization * DECIMAL_PRECISION / 100);
         }
 
-        shell_info(p_shell, "\r\n");
-
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
-            shell_info(p_shell, "Unidirectional:\r\n");
-            shell_info(p_shell,"    Throughput: %lu kbps\r\n", throughput);
+            printk("Unidirectional:\n");
+            printk("    Throughput: %lu kbps\n", throughput);
         }
         else
         {
@@ -492,18 +488,14 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 per = (uint32_t)((DECIMAL_PRECISION * 100ULL * (packets_sent - packets_acked)) / packets_sent);
             }
 
-            shell_info(p_shell, "Without retransmissions:\r\n");
+            printk("Without retransmissions:\n");
             print_decimal(p_shell, "    PER", "%", per);
-            shell_info(p_shell, "    Throughput: %lu kbps\r\n", throughput);
+            printk("    Throughput: %lu kbps\n", throughput);
 
-            shell_info(p_shell, "\r\n");
-
-            shell_info(p_shell, "With retransmissions:\r\n");
+            printk("With retransmissions:\n");
             print_decimal(p_shell, "    PER", "%", 0);
-            shell_info(p_shell, "    Throughput: %lu kbps\r\n", throughput_rtx);
+            printk("    Throughput: %lu kbps\n", throughput_rtx);
         }
-
-        shell_info(p_shell, "\r\n");
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
@@ -531,26 +523,25 @@ static void print_test_results(benchmark_event_context_t * p_context)
             }
             else
             {
-                shell_info(p_shell, "MAC Counters:\r\n");
+                printk("MAC Counters:\n");
                 print_int(p_shell, "    MAC TX Total", "", p_results->p_local_result->mac_tx_counters.total);
                 print_int(p_shell, "    MAC TX Err", "", p_results->p_local_result->mac_tx_counters.error);
             }
         }
 
-        shell_info(p_shell, "\r\n");
-        shell_info(p_shell, "Raw data:\r\n");
-        shell_info(p_shell, "    Config:\r\n");
+        printk("Raw data:\n");
+        printk("    Config:\n");
         dump_config(&m_test_configuration);
 
-        shell_info(p_shell, "    Status:\r\n");
+        printk("    Status:\n");
         dump_status(p_results->p_local_status);
 
-        shell_info(p_shell, "    Local:\r\n");
+        printk("    Local:\n");
         dump_result(p_results->p_local_result);
 
         if (p_results->p_remote_result != NULL)
         {
-            shell_info(p_shell, "    Remote:\r\n");
+            printk("    Remote:\n");
             dump_result(p_results->p_remote_result);
         }
 
@@ -562,8 +553,6 @@ static void print_test_results(benchmark_event_context_t * p_context)
         //     shell_info(p_shell, "    BLE remote:\r\n");
         //     dump_ble_result(&p_ble_ping_results->remote_results);
         // }
-
-        shell_info(p_shell, "\r\n");
     }
 
     print_done(p_shell);
@@ -575,7 +564,7 @@ static void cmd_test_start(const struct shell *shell, size_t argc, char ** argv)
 
     if (mp_peer_db == NULL)
     {
-        shell_error(shell, "No peer selected; run:\r\n     test peer discover \r\nto find peers\r\n");
+        shell_error(shell, "No peer selected; run:\n     test peer discover \nto find peers\n");
         return;
     }
 

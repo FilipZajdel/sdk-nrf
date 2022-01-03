@@ -44,7 +44,7 @@ static void zigbee_benchmark_frame_error_handler(zb_bufid_t bufid)
     }
 
     p_cmd_status = ZB_BUF_GET_PARAM(bufid, zb_zcl_command_send_status_t);
-    printk("Frame acknowledged. Status: %u", p_cmd_status->status);
+    printk("Frame acknowledged. Status: %u\n", p_cmd_status->status);
 
     if (p_cmd_status->status != RET_OK)
     {
