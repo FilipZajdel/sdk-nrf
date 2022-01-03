@@ -363,7 +363,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                // LOG_DBG("Transmission time: %u us", delay_us / 2);
+                printk("Transmission time: %u us\n", delay_us / 2);
             }
             break;
 
@@ -373,7 +373,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                // LOG_DBG("Transmission time: %u us", delay_us / 2);
+                printk("Transmission time: %u us\n", delay_us / 2);
             }
             break;
 
@@ -384,7 +384,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_test_status.acks_lost++;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
-                // LOG_DBG("Transmission timed out.");
+                printk("Transmission timed out.\n");
             }
             break;
 
@@ -448,7 +448,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 {
     struct ping_req_data ping_req;
     cmd_arg_t ping_args[CMD_ZB_PING_ARGS_NUM];
-    char command[45] = "";
+    char command[45] = "zcl ping";
     size_t argc = 0;
 
     printk("Sending ping request\n");
@@ -477,7 +477,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 
         case BENCHMARK_MODE_ECHO:
             ping_req.request_ack = 0;
-            ping_req.request_echo = 0;
+            ping_req.request_echo = 1;
             m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
             break;
 
@@ -498,11 +498,14 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 
     argc = ping_req_data_to_args(&ping_req, ping_args);
 
-    // cmd_zb_ping(p_shell, argc, (char **)ping_args);
-    sprintf(command, "zcl ping --no-echo --aps-ack 0x%.4x %u", ping_req.packet_info.dst_addr.addr_short,
-                                                               ping_req.packet_info.dst_addr_mode);
+    for (int i=0; i < argc; i++) {
+        strcat(command, " ");
+        strcat(command, ping_args[i]);
+    }
 
-    shell_execute_cmd(NULL, command);
+    printk("Sending ping command: %s\n", command);
+
+    shell_execute_cmd(p_shell, command);
 }
 
 /**@brief Function that starts benchmark test in master mode. */
@@ -514,7 +517,7 @@ static void zigbee_benchmark_test_start_master(void)
         return;
     }
 
-    // result_clear();
+    result_clear();
     // Ignore APS ACK transmission for the TEST_START_REQUEST command.
     m_local_result.mac_tx_counters.total++;
 
@@ -727,19 +730,19 @@ uint32_t benchmark_test_init(benchmark_configuration_t * p_configuration, benchm
 {
     if (m_state != TEST_IDLE)
     {
-        // LOG_ERR("Stop current test in order to modify test settings.");
+        printk("Stop current test in order to modify test settings.\n");
         return (uint32_t)RET_ERROR;
     }
 
     if ((p_configuration == NULL) || (callback == NULL))
     {
-        // LOG_ERR("Both configuration and callback have to be passed.");
+        printk("Both configuration and callback have to be passed.\n");
         return (uint32_t)RET_ERROR;
     }
 
     if (callback == NULL)
     {
-        // LOG_ERR("Event callback have to be passed.");
+        printk("Event callback have to be passed.\n");
         return (uint32_t)RET_ERROR;
     }
 
@@ -758,13 +761,13 @@ uint32_t benchmark_test_start(void)
 
     if (m_state != TEST_IDLE)
     {
-        // LOG_ERR("Stop current test in order to start different suite.");
+        printk("Stop current test in order to start different suite.\n");
         return (uint32_t)RET_ERROR;
     }
 
     if (mp_test_configuration == NULL)
     {
-        // LOG_ERR("Provide test configuration before starting a test suite.");
+        printk("Provide test configuration before starting a test suite.\n");
         return (uint32_t)RET_ERROR;
     }
 
@@ -772,7 +775,7 @@ uint32_t benchmark_test_start(void)
     m_test_status.acks_lost      = 0;
     m_test_status.reset_counters = false;
 
-    printk("Send start request to the remote peer.");
+    printk("Send start request to the remote peer.\n");
     peer_addr = m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
     return (uint32_t)zb_buf_get_out_delayed_ext(zigbee_benchmark_peer_start_request_send, peer_addr, 0);
 }
@@ -806,7 +809,7 @@ uint32_t benchmark_test_stop(void)
     {
         zb_uint16_t peer_addr = m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
 
-        // LOG_INFO("Stop remote peer.");
+        printk("Stop remote peer.\n");
         m_test_status.test_in_progress = false;
 
         return (uint32_t)zb_buf_get_out_delayed_ext(zigbee_benchmark_peer_stop_request_send, peer_addr, 0);
@@ -819,13 +822,13 @@ uint32_t benchmark_peer_discover(void)
 {
     if (m_state != TEST_IDLE)
     {
-        printk("Stop current test in order to start peer discovery.");
+        printk("Stop current test in order to start peer discovery.\n");
         return (uint32_t)RET_ERROR;
     }
 
     if (mp_test_configuration == NULL)
     {
-        printk("Provide test configuration before starting a peer discovery.");
+        printk("Provide test configuration before starting a peer discovery.\n");
         return (uint32_t)RET_ERROR;
     }
 

@@ -26,4 +26,6 @@ void benchmark_update_latency(benchmark_latency_t * p_latency, uint32_t latency)
     {
         p_latency->max = latency;
     }
+
+    printk("Update latency: min(%u) max(%u)\n", p_latency->min, p_latency->max);
 }
