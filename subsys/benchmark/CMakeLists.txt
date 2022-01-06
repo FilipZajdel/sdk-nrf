@@ -8,7 +8,8 @@ zephyr_include_directories(include . stub)
 
 zephyr_library()
 
-zephyr_library_sources(
+zephyr_library_sources_ifdef(
+  CONFIG_BENCHMARK_ZIGBEE
   benchmark_util.c
   cli_benchmark.c
   # cli_cpu.c

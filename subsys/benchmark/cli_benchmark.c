@@ -4,11 +4,14 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <shell/shell.h>
+#include <logging/log.h>
 
 #include <benchmark_cli_util.h>
 #include "protocol_api.h"
 // #include "cpu_utilization.h"
 #include "cli_suppress.h"
+
+LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define DECIMAL_PRECISION 100
 #define BPS_TO_KBPS       1024
@@ -116,8 +119,6 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
 
             printk("Discovery completed, found %d peers.", peer_count);
 
-            // err_code = app_sched_event_put(&p_shell, sizeof(p_shell), discovered_peers_print);
-            // ASSERT(err_code == NRF_SUCCESS);
             discovered_peers_print(&p_shell, sizeof(p_shell));
             break;
 
@@ -270,7 +271,7 @@ static void cmd_config_packet_length(const struct shell *shell, size_t argc, cha
 
     if (argc < 2)
     {
-        shell_info(shell,"%d\r\n", m_test_configuration.length);
+        shell_info(shell,"%d", m_test_configuration.length);
     }
     else if (argc == 2)
     {
@@ -434,7 +435,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
         return;
     }
 
-    printk("    === Test Finished ===\n");
+    LOG_INF("    === Test Finished ===");
 
     if ((p_results->p_local_status != NULL) && (p_results->p_local_result != NULL) && (p_results->p_local_result->duration != 0))
     {
@@ -443,27 +444,36 @@ static void print_test_results(benchmark_event_context_t * p_context)
         uint32_t packets_acked                            = packets_sent - p_results->p_local_status->acks_lost;
         uint32_t txed_bytes                               = m_test_configuration.length * packets_sent;
         uint32_t acked_bytes                              = m_test_configuration.length * packets_acked;
-        uint32_t throughput                               = (uint32_t)((txed_bytes * 1000ULL) / (test_duration * 128ULL));
+        uint32_t txed_bits                                = m_test_configuration.length * packets_sent * 8;
+        uint32_t throughput                               = (uint32_t)(txed_bits / test_duration);
         uint32_t throughput_rtx                           = (uint32_t)((acked_bytes * 1000ULL) / (test_duration * 128ULL));
 
+        float f_throughput = txed_bytes * 1.0 / test_duration;
+
         // benchmark_ble_ping_results_t * p_ble_ping_results = benchmark_ble_continuous_results_get();
+
+        printk("DEBUG: duration: %u, sent packets: %u, acked packets: %u, txed bytes: %u, acked bytes: %u\n",
+                test_duration, packets_sent, packets_acked, txed_bytes, acked_bytes);
 
         print_int(p_shell, "Test duration", "ms", p_results->p_local_result->duration);
 
         if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
         {
             uint32_t avg = 0;
+            float f_avg = 0.0;
             if (p_results->p_local_status->latency.cnt > 0)
             {
+                f_avg = (p_results->p_local_status->latency.sum * 1.0) / p_results->p_local_status->latency.cnt;
                 avg = (uint32_t)(p_results->p_local_status->latency.sum / p_results->p_local_status->latency.cnt);
             }
 
-            printk("Latency:\n");
+            printk("Latency:");
             // print_decimal(p_shell, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
             // print_decimal(p_shell, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
+            // print_decimal(p_shell, "    Avg", "ms", avg * DECIMAL_PRECISION / 1000);
             printk("    Min: %u\n", p_results->p_local_status->latency.min);
             printk("    Max: %u\n", p_results->p_local_status->latency.max);
-            printk("    Avg: %u\n", avg);
+            printk("    Avg: %f\n", f_avg);
         }
 
         printk("Average CPU utilization:\n");
@@ -477,7 +487,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
             printk("Unidirectional:\n");
-            printk("    Throughput: %lu kbps\n", throughput);
+            printk("    Throughput: %u kbps\n", throughput);
         }
         else
         {
@@ -490,7 +500,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
 
             printk("Without retransmissions:\n");
             print_decimal(p_shell, "    PER", "%", per);
-            printk("    Throughput: %lu kbps\n", throughput);
+            printk("    Throughput: %u kbps\n", throughput);
 
             printk("With retransmissions:\n");
             print_decimal(p_shell, "    PER", "%", 0);
@@ -631,7 +641,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_peer,
 
 SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_cmds,
     SHELL_CMD_ARG(ack-timeout, NULL,
-        "Set time after we stop waiting for the acknowledgment from the peer in milliseconds",
+        "[Not supported] Set time after we stop waiting for the acknowledgment from the peer in milliseconds",
                   cmd_config_ack_timeout, 1, 1),
     SHELL_CMD_ARG(count, NULL, "Set number of packets to be sent",
                   cmd_config_packet_count, 1, 1),
