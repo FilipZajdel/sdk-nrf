@@ -44,6 +44,10 @@ K_THREAD_STACK_DEFINE(benchmark_thread_stack, BENCHMARK_THREAD_STACK_SIZE);
 
 K_TIMER_DEFINE(discovery_timer, discovery_timeout, NULL);
 
+K_QUEUE_DEFINE(states_queue);
+
+K_MUTEX_DEFINE(states_queue_guard);
+
 static zb_time_t                     m_start_time;
 static benchmark_evt_t               m_benchmark_evt;
 static benchmark_result_t            m_local_result;
@@ -72,6 +76,21 @@ static benchmark_status_t m_test_status =
     },
 };
 
+static void change_test_state(benchmark_test_state_t new_state, bool signal_change)
+{
+    printk("Changing state\n");
+
+    (void)k_mutex_lock(&states_queue_guard, K_FOREVER); // Note: wait forever, result validation not needed
+
+    m_state = new_state;
+
+    if (signal_change) {
+        k_queue_append(&states_queue, (void*)&m_state);
+    }
+
+    k_mutex_unlock(&states_queue_guard);
+}
+
 static size_t ping_req_data_to_args(struct ping_req_data *ping_req, cmd_arg_t args[CMD_ZB_PING_ARGS_NUM])
 {
     size_t argc = 0;
@@ -85,7 +104,6 @@ static size_t ping_req_data_to_args(struct ping_req_data *ping_req, cmd_arg_t ar
     }
 
     sprintf(args[argc++], "0x%.4x", ping_req->packet_info.dst_addr.addr_short);
-    // sprintf(args[argc++], "%u", ping_req->packet_info.dst_addr_mode);
     sprintf(args[argc++], "%u", ping_req->count);
 
     return argc;
@@ -351,13 +369,14 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                                        struct ctx_entry *entry)
 {
     struct ping_req_data *p_request = &entry->ping_req_data;
+    benchmark_test_state_t new_state = m_state;
 
     switch (evt)
     {
         case PING_EVT_FRAME_SENT:
             if (m_state == TEST_IN_PROGRESS_FRAME_SENDING)
             {
-                m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                new_state = TEST_IN_PROGRESS_FRAME_SENT;
             }
             break;
 
@@ -365,7 +384,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
             if (m_state == TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ACK)
             {
                 m_test_status.waiting_for_ack = 0;
-                m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                new_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
                 LOG_INF("Transmission time: %u us", delay_us / 2);
             }
@@ -375,7 +394,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
             if (m_state == TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO)
             {
                 m_test_status.waiting_for_ack = 0;
-                m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                new_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
                 LOG_INF("Transmission time: %u us", delay_us / 2);
             }
@@ -387,7 +406,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
             {
                 m_test_status.waiting_for_ack = 0;
                 m_test_status.acks_lost++;
-                m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                new_state = TEST_IN_PROGRESS_FRAME_SENT;
                 LOG_INF("Transmission timed out.");
             }
             break;
@@ -404,12 +423,12 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 {
                     if (mp_test_configuration->mode != BENCHMARK_MODE_UNIDIRECTIONAL)
                     {
-                        m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                        new_state = TEST_IN_PROGRESS_FRAME_SENT;
                     }
                 }
                 else
                 {
-                    m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                    new_state = TEST_IN_PROGRESS_FRAME_SENT;
                 }
             }
             else
@@ -424,7 +443,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 (m_state == TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO) ||
                 (m_state == TEST_IN_PROGRESS_FRAME_SENDING))
             {
-                m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
+                new_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
             }
             break;
 
@@ -445,6 +464,8 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
         default:
             break;
     }
+
+    change_test_state(new_state, true);
 }
 
 /**@brief Function that constructs and sends ping request. */
@@ -454,6 +475,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
     cmd_arg_t ping_args[CMD_ZB_PING_ARGS_NUM];
     char command[45] = "zcl ping";
     size_t argc = 0;
+    benchmark_test_state_t new_state = m_state;
 
     LOG_DBG("Sending ping request");
 
@@ -469,7 +491,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 
     if (mp_test_configuration->length > PING_MAX_LENGTH)
     {
-        m_state = TEST_ERROR;
+        new_state = TEST_ERROR;
         LOG_ERR("Packet length value is too big: max %u", PING_MAX_LENGTH);
         return;
     }
@@ -484,19 +506,19 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
         case BENCHMARK_MODE_UNIDIRECTIONAL:
             ping_req.request_ack  = 0;
             ping_req.request_echo = 0;
-            m_state = TEST_IN_PROGRESS_FRAME_SENDING;
+            new_state = TEST_IN_PROGRESS_FRAME_SENDING;
             break;
 
         case BENCHMARK_MODE_ECHO:
             ping_req.request_ack = 0;
             ping_req.request_echo = 1;
-            m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
+            new_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
             break;
 
         case BENCHMARK_MODE_ACK:
             ping_req.request_ack  = 1;
             ping_req.request_echo = 0;
-            m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ACK;
+            new_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ACK;
             break;
 
         default:
@@ -504,7 +526,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
             mp_test_configuration->mode = BENCHMARK_MODE_ECHO;
             ping_req.request_ack     = 0;
             ping_req.request_echo    = 1;
-            m_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
+            new_state = TEST_IN_PROGRESS_FRAME_SENT_WAITING_FOR_ECHO;
             break;
     }
 
@@ -516,6 +538,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
     }
 
     shell_execute_cmd(p_shell, command);
+    change_test_state(new_state, true);
 }
 
 /**@brief Function that starts benchmark test in master mode. */
@@ -535,7 +558,7 @@ static void zigbee_benchmark_test_start_master(void)
     m_test_status.test_in_progress = true;
     m_start_time                   = ZB_TIMER_GET();
 
-    m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
+    change_test_state(TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER, false);
     zigbee_benchmark_send_ping_req(NULL);
 
     if (mp_callback)
@@ -576,8 +599,6 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
         return ZB_ZCL_STATUS_FAIL;
     }
 
-    m_state = TEST_IN_PROGRESS_WAITING_FOR_STOP_CMD;
-
     memset(&m_benchmark_evt, 0, sizeof(benchmark_evt_t));
     m_test_status.acks_lost = 0;
     m_start_time            = ZB_TIMER_GET();
@@ -596,6 +617,7 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
     }
 
     LOG_INF("Start benchmark on the remote peer.");
+    change_test_state(TEST_IN_PROGRESS_WAITING_FOR_STOP_CMD, true);
     return ZB_ZCL_STATUS_SUCCESS;
 }
 
@@ -612,7 +634,6 @@ zb_zcl_status_t zigbee_benchmark_test_stop_slave(void)
     m_local_result.cpu_utilization = cpu_utilization_get();
     cpu_utilization_stop();
     benchmark_test_duration_calculate();
-    m_state = TEST_IDLE;
     m_test_status.test_in_progress = false;
 
     // Generate event in order to unlock CLI suppression on the slave board.
@@ -626,6 +647,7 @@ zb_zcl_status_t zigbee_benchmark_test_stop_slave(void)
     }
 
     // LOG_INFO("Benchmark finished on the remote peer.");
+    change_test_state(TEST_IDLE, true);
     return ZB_ZCL_STATUS_SUCCESS;
 }
 
@@ -712,10 +734,15 @@ void zigbee_benchmark_test_abort(void)
 
 static void benchmark_thread_loop(void *p1, void *p2, void *p3)
 {
+
     while (true)
     {
+        k_mutex_lock(&states_queue_guard, K_FOREVER);
+
+        (void)k_queue_get(&states_queue, K_FOREVER);
         benchmark_process();
-        k_usleep(500);
+
+        k_mutex_unlock(&states_queue_guard);
     }
 }
 
@@ -810,7 +837,6 @@ uint32_t benchmark_test_stop(void)
     }
 
     LOG_INF("Reset benchmark state.");
-    m_state = TEST_IDLE;
     benchmark_test_duration_calculate();
     mac_counters_calculate();
     cpu_utilization_stop();
@@ -825,6 +851,7 @@ uint32_t benchmark_test_stop(void)
         return (uint32_t)zb_buf_get_out_delayed_ext(zigbee_benchmark_peer_stop_request_send, peer_addr, 0);
     }
 
+    change_test_state(TEST_IDLE, true);
     return (uint32_t) RET_OK;
 }
 
@@ -885,7 +912,6 @@ void benchmark_process(void)
                         (mp_test_configuration->count - m_test_status.packets_left_count));
             }
             m_test_status.test_in_progress = false;
-            m_state = TEST_IDLE;
 
             if (mp_callback)
             {
@@ -893,6 +919,7 @@ void benchmark_process(void)
                 m_benchmark_evt.context.error = (uint32_t)RET_ERROR;
                 mp_callback(&m_benchmark_evt);
             }
+            change_test_state(TEST_IDLE, true);
             break;
 
         case TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER:
@@ -911,7 +938,7 @@ void benchmark_process(void)
             else
             {
                 LOG_INF("Test frame sent, test finished.");
-                m_state = TEST_FINISHED;
+                change_test_state(TEST_FINISHED, true);
             }
             break;
 
