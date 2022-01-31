@@ -27,6 +27,8 @@
 #define BENCHMARK_THREAD_PRIO       7
 #define BENCHMARK_THREAD_OPTS       0
 
+extern int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data);
+
 
 LOG_MODULE_REGISTER(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -71,25 +73,6 @@ static benchmark_status_t m_test_status =
         .max = UINT32_MAX
     },
 };
-
-static size_t ping_req_data_to_args(struct ping_req_data *ping_req, cmd_arg_t args[CMD_ZB_PING_ARGS_NUM])
-{
-    size_t argc = 0;
-
-    if (ping_req->request_ack) {
-        strcpy(args[argc++], CMD_ZB_PING_ARG_REQ_ACK);
-    }
-
-    if (!ping_req->request_echo) {
-        strcpy(args[argc++], CMD_ZB_PING_ARG_NO_ECHO);
-    }
-
-    sprintf(args[argc++], "0x%.4x", ping_req->packet_info.dst_addr.addr_short);
-    // sprintf(args[argc++], "%u", ping_req->packet_info.dst_addr_mode);
-    sprintf(args[argc++], "%u", ping_req->count);
-
-    return argc;
-}
 
 /**@brief Function that triggers calculation of the test duration. */
 static void benchmark_test_duration_calculate(void)
@@ -183,7 +166,7 @@ static void discovery_timeout(struct k_timer *timer)
     m_benchmark_evt.evt                        = BENCHMARK_DISCOVERY_COMPLETED;
     m_benchmark_evt.context.p_peer_information = &m_peer_information;
 
-    LOG_INF("Discovery timeout");
+    LOG_DBG("Discovery timeout");
 
     if (mp_callback)
     {
@@ -352,6 +335,8 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
 {
     struct ping_req_data *p_request = &entry->ping_req_data;
 
+    printk("Benchmark ping evt handler!! state %u\n", evt);
+
     switch (evt)
     {
         case PING_EVT_FRAME_SENT:
@@ -367,7 +352,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                LOG_INF("Transmission time: %u us", delay_us / 2);
+                LOG_DBG("Transmission time: %u us", delay_us / 2);
             }
             break;
 
@@ -377,7 +362,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                LOG_INF("Transmission time: %u us", delay_us / 2);
+                LOG_DBG("Transmission time: %u us", delay_us / 2);
             }
             break;
 
@@ -388,7 +373,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_test_status.acks_lost++;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
-                LOG_INF("Transmission timed out.");
+                LOG_DBG("Transmission timed out.");
             }
             break;
 
@@ -451,10 +436,6 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
 static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 {
     struct ping_req_data ping_req;
-    cmd_arg_t ping_args[CMD_ZB_PING_ARGS_NUM];
-    char command[45] = "zcl ping";
-    size_t argc = 0;
-
     LOG_DBG("Sending ping request");
 
     if (m_test_status.packets_left_count == 0)
@@ -508,14 +489,7 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
             break;
     }
 
-    argc = ping_req_data_to_args(&ping_req, ping_args);
-
-    for (int i=0; i < argc; i++) {
-        strcat(command, " ");
-        strcat(command, ping_args[i]);
-    }
-
-    shell_execute_cmd(p_shell, command);
+    cmd_zb_ping_generic(p_shell, &ping_req);
 }
 
 /**@brief Function that starts benchmark test in master mode. */

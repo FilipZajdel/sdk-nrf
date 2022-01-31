@@ -18,6 +18,8 @@ LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
 static void print_test_results(benchmark_event_context_t * p_context);
 
+static char results_log_buf[1024];
+
 struct shell const *p_shell;
 static benchmark_peer_db_t *mp_peer_db;
 static benchmark_configuration_t m_test_configuration =
@@ -343,11 +345,11 @@ static void print_int(const struct shell *shell, const char *p_description, cons
 {
     if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
     {
-        printk("%s: %lu%s\n", p_description, value, p_unit);
+        LOG_INF("%s: %lu%s", p_description, value, p_unit);
     }
     else
     {
-        printk("%s: Not supported\n", p_description);
+        LOG_INF("%s: Not supported", p_description);
     }
 }
 
@@ -358,11 +360,11 @@ static void print_decimal(const struct shell *shell, const char *p_description, 
         uint32_t value_int       = value / DECIMAL_PRECISION;
         uint32_t value_remainder = value % DECIMAL_PRECISION;
 
-        shell_info(shell, "%s: %lu.%02lu%s", p_description, value_int, value_remainder, p_unit);
+        LOG_INF("%s: %lu.%02lu%s", p_description, value_int, value_remainder, p_unit);
     }
     else
     {
-        shell_info(shell, "%s: Not supported\n", p_description);
+        LOG_INF("%s: Not supported\n", p_description);
     }
 }
 
@@ -373,13 +375,13 @@ static void dump_config(benchmark_configuration_t * p_config)
     print_int(p_shell, "        Length", "", p_config->length);
     print_int(p_shell, "        ACK timeout", "ms", p_config->ack_timeout);
     print_int(p_shell, "        Count", "", p_config->count);
-    printk("        Mode: %s\n", modes[p_config->mode]);
+    LOG_INF("        Mode: %s", modes[p_config->mode]);
 }
 
 static void dump_status(benchmark_status_t * p_status)
 {
-    printk("        Test in progress: %s\n", p_status->test_in_progress ? "True" : "False");
-    printk("        Reset counters: %s\n", p_status->reset_counters ? "True" : "False");
+    LOG_INF("        Test in progress: %s", p_status->test_in_progress ? "True" : "False");
+    LOG_INF("        Reset counters: %s", p_status->reset_counters ? "True" : "False");
     print_int(p_shell, "        ACKs lost", "", p_status->acks_lost);
     print_int(p_shell, "        Waiting for ACKs", "", p_status->waiting_for_ack);
     print_int(p_shell, "        Packets left count", "", p_status->packets_left_count);
@@ -394,7 +396,7 @@ static void dump_status(benchmark_status_t * p_status)
             avg = (uint32_t)(p_status->latency.sum / p_status->latency.cnt);
         }
 
-        printk("        Latency:\n");
+        LOG_INF("        Latency:");
         print_decimal(p_shell, "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 1000);
         print_decimal(p_shell, "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 1000);
         print_decimal(p_shell, "            Avg", "ms", avg * DECIMAL_PRECISION / 1000);
@@ -406,14 +408,14 @@ static void dump_result(benchmark_result_t * p_result)
     print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
     print_int(p_shell, "        Duration", "ms", p_result->duration);
 
-    printk("        App counters:\n");
+    LOG_INF("        App counters:");
 
     print_int(p_shell, "            Bytes received", "B", p_result->rx_counters.bytes_received);
     print_int(p_shell, "            Packets received", "", p_result->rx_counters.packets_received);
     print_int(p_shell, "            RX error", "", p_result->rx_counters.rx_error);
     print_int(p_shell, "            RX total", "", p_result->rx_counters.rx_total);
 
-    printk("        Mac counters:\n");
+    LOG_INF("        Mac counters:");
     print_int(p_shell, "            TX error", "", p_result->mac_tx_counters.error);
     print_int(p_shell, "            TX total", "", p_result->mac_tx_counters.total);
 }
@@ -452,7 +454,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
 
         // benchmark_ble_ping_results_t * p_ble_ping_results = benchmark_ble_continuous_results_get();
 
-        printk("DEBUG: duration: %u, sent packets: %u, acked packets: %u, txed bytes: %u, acked bytes: %u\n",
+        printk("duration: %u, sent packets: %u, acked packets: %u, txed bytes: %u, acked bytes: %u\n",
                 test_duration, packets_sent, packets_acked, txed_bytes, acked_bytes);
 
         print_int(p_shell, "Test duration", "ms", p_results->p_local_result->duration);
@@ -467,16 +469,16 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 avg = (uint32_t)(p_results->p_local_status->latency.sum / p_results->p_local_status->latency.cnt);
             }
 
-            printk("Latency:");
+            LOG_INF("Latency:");
             // print_decimal(p_shell, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
             // print_decimal(p_shell, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
             // print_decimal(p_shell, "    Avg", "ms", avg * DECIMAL_PRECISION / 1000);
-            printk("    Min: %u\n", p_results->p_local_status->latency.min);
-            printk("    Max: %u\n", p_results->p_local_status->latency.max);
-            printk("    Avg: %f\n", f_avg);
+            LOG_INF("    Min: %u", p_results->p_local_status->latency.min);
+            LOG_INF("    Max: %u", p_results->p_local_status->latency.max);
+            LOG_INF("    Avg: %f", f_avg);
         }
 
-        printk("Average CPU utilization:\n");
+        LOG_INF("Average CPU utilization:");
         print_decimal(p_shell, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
 
         if (p_results->p_remote_result != NULL)
@@ -486,8 +488,8 @@ static void print_test_results(benchmark_event_context_t * p_context)
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
-            printk("Unidirectional:\n");
-            printk("    Throughput: %u kbps\n", throughput);
+            LOG_INF("Unidirectional:");
+            LOG_INF("    Throughput: %u kbps", throughput);
         }
         else
         {
@@ -498,13 +500,13 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 per = (uint32_t)((DECIMAL_PRECISION * 100ULL * (packets_sent - packets_acked)) / packets_sent);
             }
 
-            printk("Without retransmissions:\n");
+            LOG_INF("Without retransmissions:");
             print_decimal(p_shell, "    PER", "%", per);
-            printk("    Throughput: %u kbps\n", throughput);
+            LOG_INF("    Throughput: %u kbps", throughput);
 
-            printk("With retransmissions:\n");
+            LOG_INF("With retransmissions:");
             print_decimal(p_shell, "    PER", "%", 0);
-            printk("    Throughput: %lu kbps\n", throughput_rtx);
+            LOG_INF("    Throughput: %lu kbps", throughput_rtx);
         }
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
@@ -533,25 +535,25 @@ static void print_test_results(benchmark_event_context_t * p_context)
             }
             else
             {
-                printk("MAC Counters:\n");
+                LOG_INF("MAC Counters:");
                 print_int(p_shell, "    MAC TX Total", "", p_results->p_local_result->mac_tx_counters.total);
                 print_int(p_shell, "    MAC TX Err", "", p_results->p_local_result->mac_tx_counters.error);
             }
         }
 
-        printk("Raw data:\n");
-        printk("    Config:\n");
+        LOG_INF("Raw data:");
+        LOG_INF("    Config:");
         dump_config(&m_test_configuration);
 
-        printk("    Status:\n");
+        LOG_INF("    Status:");
         dump_status(p_results->p_local_status);
 
-        printk("    Local:\n");
+        LOG_INF("    Local:");
         dump_result(p_results->p_local_result);
 
         if (p_results->p_remote_result != NULL)
         {
-            printk("    Remote:\n");
+            LOG_INF("    Remote:");
             dump_result(p_results->p_remote_result);
         }
 

@@ -833,3 +833,43 @@ int cmd_zb_ping(const struct shell *shell, size_t argc, char **argv)
 	ping_request_send(ping_entry);
 	return 0;
 }
+
+int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data)
+{
+	uint8_t i;
+	struct ctx_entry *ping_entry =
+		ctx_mgr_new_entry(CTX_MGR_PING_REQ_ENTRY_TYPE);
+
+	if (!ping_entry || !ping_req_data) {
+		zb_cli_print_error(shell, "Couldn't get free entry to store data",
+				   ZB_FALSE);
+		return -ENOEXEC;
+	}
+
+	ping_entry->ping_req_data.cb = ping_evt_cb;
+	ping_entry->ping_req_data.request_ack = ping_req_data->request_ack;
+	ping_entry->ping_req_data.request_echo = ping_req_data->request_echo;
+	ping_entry->ping_req_data.timeout_ms = ping_req_data->timeout_ms;
+	ping_entry->ping_req_data.packet_info.dst_addr_mode = ping_req_data->packet_info.dst_addr_mode;
+	ping_entry->ping_req_data.count = ping_req_data->count;
+
+	if (ping_entry->ping_req_data.packet_info.dst_addr_mode ==
+	    ADDR_INVALID) {
+		zb_cli_print_error(shell, "Wrong address format", ZB_FALSE);
+		ctx_mgr_delete_entry(ping_entry);
+		return -EINVAL;
+	}
+
+	if (ping_req_data->count > PING_MAX_LENGTH) {
+		shell_print(shell, "Note: Ping payload size"
+							"exceeds maximum possible,"
+							"assuming maximum");
+		ping_entry->ping_req_data.count = PING_MAX_LENGTH;
+	}
+
+	/* Put the shell instance to be used later. */
+	ping_entry->shell = shell;
+
+	ping_request_send(ping_entry);
+	return 0;
+}
