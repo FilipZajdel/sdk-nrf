@@ -2,22 +2,25 @@
 
 #include <zephyr.h>
 #include <shell/shell.h>
+#include <logging/log.h>
 
 #include <benchmark_cli_util.h>
 #include "protocol_api.h"
 #include "benchmark_zigbee_common.h"
 
+LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
+
 void protocol_cmd_peer_db_get(const struct shell *shell, const benchmark_peer_db_t * p_peers)
 {
-    printk("\r\n# ||    Device ID   || 16-bit network address\r\n");
+    LOG_INF("\r\n# ||    Device ID   || 16-bit network address\r\n");
 
     for (uint16_t i = 0; i < p_peers->peer_count; i++)
     {
-        printk("[%d]:  %08x%08x  %04x\r\n",
-               i,
-               DEVICE_ID_HI(p_peers->peer_table[i].device_id),
-               DEVICE_ID_LO(p_peers->peer_table[i].device_id),
-               p_peers->peer_table[i].p_address->nwk_addr);
+        LOG_INF("[%d]:  %08x%08x  %04x\r\n",
+                i,
+                DEVICE_ID_HI(p_peers->peer_table[i].device_id),
+                DEVICE_ID_LO(p_peers->peer_table[i].device_id),
+                p_peers->peer_table[i].p_address->nwk_addr);
     }
 }
 

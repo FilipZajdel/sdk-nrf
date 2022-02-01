@@ -836,7 +836,6 @@ int cmd_zb_ping(const struct shell *shell, size_t argc, char **argv)
 
 int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data)
 {
-	uint8_t i;
 	struct ctx_entry *ping_entry =
 		ctx_mgr_new_entry(CTX_MGR_PING_REQ_ENTRY_TYPE);
 
@@ -849,9 +848,9 @@ int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_re
 	ping_entry->ping_req_data.cb = ping_evt_cb;
 	ping_entry->ping_req_data.request_ack = ping_req_data->request_ack;
 	ping_entry->ping_req_data.request_echo = ping_req_data->request_echo;
-	ping_entry->ping_req_data.timeout_ms = ping_req_data->timeout_ms;
-	ping_entry->ping_req_data.packet_info.dst_addr_mode = ping_req_data->packet_info.dst_addr_mode;
+	ping_entry->ping_req_data.timeout_ms = PING_ECHO_REQUEST_TIMEOUT_S * MSEC_PER_SEC;
 	ping_entry->ping_req_data.count = ping_req_data->count;
+	ping_entry->ping_req_data.packet_info = ping_req_data->packet_info;
 
 	if (ping_entry->ping_req_data.packet_info.dst_addr_mode ==
 	    ADDR_INVALID) {

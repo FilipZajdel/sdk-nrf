@@ -18,7 +18,8 @@ LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
 static void print_test_results(benchmark_event_context_t * p_context);
 
-static char results_log_buf[1024];
+static char long_log_buf[1024];
+static int buf_pos;
 
 struct shell const *p_shell;
 static benchmark_peer_db_t *mp_peer_db;
@@ -77,7 +78,7 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
     switch (p_evt->evt)
     {
         case BENCHMARK_TEST_COMPLETED:
-            printk("Test completed.\n");
+            LOG_INF("Test completed.\n");
             // cli_suppress_disable();
             print_test_results(&(p_evt->context));
             // benchmark_ble_flood_stop();
@@ -85,7 +86,7 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
 
         case BENCHMARK_TEST_STARTED:
             assert(!protocol_is_error(p_evt->context.error));
-            printk("Test started.");
+            LOG_INF("Test started.");
             cli_suppress_enable();
             break;
 
@@ -94,11 +95,11 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
 
             if (!protocol_is_error(p_evt->context.error))
             {
-                printk("Test successfully stopped.");
+                LOG_INF("Test successfully stopped.");
             }
             else
             {
-                printk("Test stopped with errors. Error code: %u", p_evt->context.error);
+                LOG_INF("Test stopped with errors. Error code: %u", p_evt->context.error);
                 if (p_shell)
                 {
                     shell_error(p_shell, "Error: Test stopped with errors. Error code: %u\r\n", p_evt->context.error);
@@ -119,13 +120,13 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
                 mp_peer_db = NULL;
             }
 
-            printk("Discovery completed, found %d peers.", peer_count);
+            LOG_INF("Discovery completed, found %d peers.", peer_count);
 
             discovered_peers_print(&p_shell, sizeof(p_shell));
             break;
 
         default:
-            printk("Unknown benchmark_evt.");
+            LOG_DBG("Unknown benchmark_evt.");
             break;
     };
 }
@@ -143,12 +144,12 @@ const benchmark_peer_entry_t * benchmark_peer_selected_get(void)
 /** Common commands, API used by all benchmark commands */
 void print_done(const struct shell *shell)
 {
-    printk("Done\r\n");
+    LOG_INF("Done");
 }
 
 void print_error(const struct shell *shell, char *what)
 {
-    printk("Error: %s\r\n", what);
+    LOG_ERR("Error: %s", what);
 }
 
 void cmd_default(const struct shell *shell, size_t argc, char ** argv)
@@ -173,11 +174,19 @@ void cmd_config_get(const struct shell *shell, size_t argc, char ** argv)
         return;
     }
 
-    shell_info(shell, "=== Test settings ===");
-    shell_info(shell, "Mode:               %s", configuration_mode_name_get(&m_test_configuration.mode));
-    shell_info(shell, "ACK Timeout:        %d [ms]", m_test_configuration.ack_timeout);
-    shell_info(shell, "Packet count:       %d", m_test_configuration.count);
-    shell_info(shell, "Payload length [B]: %d", m_test_configuration.length);
+    sprintf(long_log_buf, "=== Test settings ===\n"
+            "Mode:%10s\nACK Timeout:%10d [ms]\nPacket count:%10d\nPayload length [B]:%10d",
+            configuration_mode_name_get(&m_test_configuration.mode),
+            m_test_configuration.ack_timeout,
+            m_test_configuration.count,
+            m_test_configuration.length);
+
+    shell_info(shell, "%s", long_log_buf);
+    // shell_info(shell, "=== Test settings ===");
+    // shell_info(shell, "Mode:               %s", configuration_mode_name_get(&m_test_configuration.mode));
+    // shell_info(shell, "ACK Timeout:        %d [ms]", m_test_configuration.ack_timeout);
+    // shell_info(shell, "Packet count:       %d", m_test_configuration.count);
+    // shell_info(shell, "Payload length [B]: %d", m_test_configuration.length);
 }
 
 static void cmd_info_get(const struct shell *shell, size_t argc, char ** argv)
@@ -368,56 +377,108 @@ static void print_decimal(const struct shell *shell, const char *p_description, 
     }
 }
 
+static void parse_decimal(char *buf_out, const char *p_description, const char *p_unit, uint32_t value)
+{
+    if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
+    {
+        uint32_t value_int       = value / DECIMAL_PRECISION;
+        uint32_t value_remainder = value % DECIMAL_PRECISION;
+
+        sprintf(buf_out, "%s: %lu.%02lu%s", p_description, value_int, value_remainder, p_unit);
+    }
+    else
+    {
+        LOG_INF("%s: Not supported\n", p_description);
+    }
+}
+
 static void dump_config(benchmark_configuration_t * p_config)
 {
     const char * const modes[] = {"Unidirectional", "Echo", "ACK"};
 
-    print_int(p_shell, "        Length", "", p_config->length);
-    print_int(p_shell, "        ACK timeout", "ms", p_config->ack_timeout);
-    print_int(p_shell, "        Count", "", p_config->count);
-    LOG_INF("        Mode: %s", modes[p_config->mode]);
+    buf_pos += sprintf(long_log_buf + buf_pos,
+                       "\r\n        Length: %u"
+                       "\r\n        ACK timeout: %u ms"
+                       "\r\n        Count: %u"
+                       "\r\n        Mode: %s",
+                       p_config->length, p_config->ack_timeout, p_config->count,
+                       modes[p_config->mode]);
 }
 
 static void dump_status(benchmark_status_t * p_status)
 {
-    LOG_INF("        Test in progress: %s", p_status->test_in_progress ? "True" : "False");
-    LOG_INF("        Reset counters: %s", p_status->reset_counters ? "True" : "False");
-    print_int(p_shell, "        ACKs lost", "", p_status->acks_lost);
-    print_int(p_shell, "        Waiting for ACKs", "", p_status->waiting_for_ack);
-    print_int(p_shell, "        Packets left count", "", p_status->packets_left_count);
-    print_int(p_shell, "        Frame number", "", p_status->frame_number);
-
+    buf_pos += sprintf(long_log_buf + buf_pos,
+                      "\r\n        Test in progress: %s"
+                      "\r\n        Reset counters: %s"
+                      "\r\n        ACKs lost: %u"
+                      "\r\n        Waiting for ACKs: %u"
+                      "\r\n        Packets left count: %u"
+                      "\r\n        Frame number: %u",
+                      p_status->test_in_progress ? "True" : "False",
+                      p_status->reset_counters ? "True" : "False",
+                      p_status->acks_lost,
+                      p_status->waiting_for_ack,
+                      p_status->packets_left_count,
+                      p_status->frame_number);
 
     if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
     {
         uint32_t avg = 0;
+        char latency_parsed[3][60] = {"", "", ""};
+
         if (p_status->latency.cnt > 0)
         {
             avg = (uint32_t)(p_status->latency.sum / p_status->latency.cnt);
         }
 
-        LOG_INF("        Latency:");
-        print_decimal(p_shell, "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 1000);
-        print_decimal(p_shell, "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 1000);
-        print_decimal(p_shell, "            Avg", "ms", avg * DECIMAL_PRECISION / 1000);
+        parse_decimal(latency_parsed[0], "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 10);
+        parse_decimal(latency_parsed[1], "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 10);
+        parse_decimal(latency_parsed[2], "            Avg", "ms", avg * DECIMAL_PRECISION / 10);
+
+        buf_pos += sprintf(long_log_buf + buf_pos, "\r\n        Latency:\r\n%s\r\n%s\r\n%s",
+                           latency_parsed[0], latency_parsed[1], latency_parsed[2]);
     }
+
+    LOG_INF("\r\n%s", log_strdup(long_log_buf));
+    buf_pos = 0;
 }
 
 static void dump_result(benchmark_result_t * p_result)
 {
-    print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
-    print_int(p_shell, "        Duration", "ms", p_result->duration);
+    char cpu_util_buf[40] = "";
 
-    LOG_INF("        App counters:");
+    parse_decimal(cpu_util_buf, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
 
-    print_int(p_shell, "            Bytes received", "B", p_result->rx_counters.bytes_received);
-    print_int(p_shell, "            Packets received", "", p_result->rx_counters.packets_received);
-    print_int(p_shell, "            RX error", "", p_result->rx_counters.rx_error);
-    print_int(p_shell, "            RX total", "", p_result->rx_counters.rx_total);
+    buf_pos += sprintf(long_log_buf + buf_pos, "%s"
+                          "\r\n        Duration: %u ms"
+                          "\r\n        App counters:"
+                          "\r\n            Bytes received: %uB"
+                          "\r\n            Packets received: %u"
+                          "\r\n            RX error: %u"
+                          "\r\n            RX total: %u"
+                          "\r\n        Mac counters:"
+                          "\r\n            TX error: %u"
+                          "\r\n            TX total: %u",
+                          cpu_util_buf, p_result->duration, p_result->rx_counters.bytes_received,
+                          p_result->rx_counters.packets_received, p_result->rx_counters.rx_error,
+                          p_result->rx_counters.rx_total, p_result->mac_tx_counters.error,
+                          p_result->mac_tx_counters.total);
 
-    LOG_INF("        Mac counters:");
-    print_int(p_shell, "            TX error", "", p_result->mac_tx_counters.error);
-    print_int(p_shell, "            TX total", "", p_result->mac_tx_counters.total);
+    LOG_INF("\r\n%s", log_strdup(long_log_buf));
+    buf_pos = 0;
+    // print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
+    // print_int(p_shell, "        Duration", "ms", p_result->duration);
+
+    // LOG_INF("        App counters:");
+
+    // print_int(p_shell, "            Bytes received", "B", p_result->rx_counters.bytes_received);
+    // print_int(p_shell, "            Packets received", "", p_result->rx_counters.packets_received);
+    // print_int(p_shell, "            RX error", "", p_result->rx_counters.rx_error);
+    // print_int(p_shell, "            RX total", "", p_result->rx_counters.rx_total);
+
+    // LOG_INF("        Mac counters:");
+    // print_int(p_shell, "            TX error", "", p_result->mac_tx_counters.error);
+    // print_int(p_shell, "            TX total", "", p_result->mac_tx_counters.total);
 }
 
 // static void dump_ble_result(benchmark_ble_results_t * p_result)
@@ -437,7 +498,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
         return;
     }
 
-    LOG_INF("    === Test Finished ===");
+    buf_pos += sprintf(long_log_buf, "\r\n=== Test Finished ===");
 
     if ((p_results->p_local_status != NULL) && (p_results->p_local_result != NULL) && (p_results->p_local_result->duration != 0))
     {
@@ -450,63 +511,78 @@ static void print_test_results(benchmark_event_context_t * p_context)
         uint32_t throughput                               = (uint32_t)(txed_bits / test_duration);
         uint32_t throughput_rtx                           = (uint32_t)((acked_bytes * 1000ULL) / (test_duration * 128ULL));
 
-        float f_throughput = txed_bytes * 1.0 / test_duration;
+        char throughput_str[60] = "";
+        char throughput_rtx_str[60] = "";
+
+        parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
+        parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
 
         // benchmark_ble_ping_results_t * p_ble_ping_results = benchmark_ble_continuous_results_get();
 
-        printk("duration: %u, sent packets: %u, acked packets: %u, txed bytes: %u, acked bytes: %u\n",
-                test_duration, packets_sent, packets_acked, txed_bytes, acked_bytes);
+        buf_pos += sprintf(long_log_buf + buf_pos,
+                           "\r\nsent packets: %u\r\nacked packets: %u\r\ntxed bytes: %u\r\nacked bytes: %u",
+                           packets_sent, packets_acked, txed_bytes, acked_bytes);
 
-        print_int(p_shell, "Test duration", "ms", p_results->p_local_result->duration);
+        buf_pos += sprintf(long_log_buf + buf_pos, "\r\nTest duration: %u ms",
+                           p_results->p_local_result->duration);
 
         if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
         {
+            char avg_str[40] = "";
             uint32_t avg = 0;
-            float f_avg = 0.0;
+
             if (p_results->p_local_status->latency.cnt > 0)
             {
-                f_avg = (p_results->p_local_status->latency.sum * 1.0) / p_results->p_local_status->latency.cnt;
-                avg = (uint32_t)(p_results->p_local_status->latency.sum / p_results->p_local_status->latency.cnt);
+                avg = (uint32_t)(p_results->p_local_status->latency.sum * DECIMAL_PRECISION / p_results->p_local_status->latency.cnt);
             }
 
-            LOG_INF("Latency:");
-            // print_decimal(p_shell, "    Min", "ms", p_results->p_local_status->latency.min * DECIMAL_PRECISION / 1000);
-            // print_decimal(p_shell, "    Max", "ms", p_results->p_local_status->latency.max * DECIMAL_PRECISION / 1000);
-            // print_decimal(p_shell, "    Avg", "ms", avg * DECIMAL_PRECISION / 1000);
-            LOG_INF("    Min: %u", p_results->p_local_status->latency.min);
-            LOG_INF("    Max: %u", p_results->p_local_status->latency.max);
-            LOG_INF("    Avg: %f", f_avg);
+            parse_decimal(avg_str, "    Avg", "", avg);
+
+            buf_pos += sprintf(long_log_buf + buf_pos,
+                               "\r\nLatency:"
+                               "\r\n    Min: %u"
+                               "\r\n    Max: %u"
+                               "\r\n%s",
+                               p_results->p_local_status->latency.min,
+                               p_results->p_local_status->latency.max,
+                               avg_str);
+
         }
 
-        LOG_INF("Average CPU utilization:");
-        print_decimal(p_shell, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
+        buf_pos += sprintf(long_log_buf + buf_pos, "\r\nAverage CPU utilization:");
 
-        if (p_results->p_remote_result != NULL)
-        {
-            print_decimal(p_shell, "    Remote", "%", p_results->p_remote_result->cpu_utilization * DECIMAL_PRECISION / 100);
-        }
+        // LOG_INF("Average CPU utilization:");
+        // print_decimal(p_shell, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
+
+        // if (p_results->p_remote_result != NULL)
+        // {
+        //     print_decimal(p_shell, "    Remote", "%", p_results->p_remote_result->cpu_utilization * DECIMAL_PRECISION / 100);
+        // }
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
-            LOG_INF("Unidirectional:");
-            LOG_INF("    Throughput: %u kbps", throughput);
+            buf_pos += sprintf(long_log_buf + buf_pos,
+                               "\r\nUnidirectional:"
+                               "\r\n%s", throughput_str);
         }
         else
         {
             uint32_t per = UINT32_MAX;
+            char per_str[2][40] = {"", ""};
 
             if (packets_sent != 0)
             {
                 per = (uint32_t)((DECIMAL_PRECISION * 100ULL * (packets_sent - packets_acked)) / packets_sent);
             }
 
-            LOG_INF("Without retransmissions:");
-            print_decimal(p_shell, "    PER", "%", per);
-            LOG_INF("    Throughput: %u kbps", throughput);
+            parse_decimal(per_str[0], "    PER", "%", per);
+            parse_decimal(per_str[1], "    PER", "%", 0);
 
-            LOG_INF("With retransmissions:");
-            print_decimal(p_shell, "    PER", "%", 0);
-            LOG_INF("    Throughput: %lu kbps", throughput_rtx);
+            buf_pos += sprintf(long_log_buf + buf_pos, "\r\nWithout retransmissions:"
+                               "\r\n%s" "\r\n%s"
+                               "\r\nWith retransmissions:"
+                               "\r\n%s" "\r\n%s",
+                               per_str[0], throughput_str, per_str[1], throughput_rtx_str);
         }
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
@@ -514,11 +590,15 @@ static void print_test_results(benchmark_event_context_t * p_context)
             uint32_t mac_tx_attempts = p_results->p_local_result->mac_tx_counters.total;
             uint32_t mac_tx_errors   = p_results->p_local_result->mac_tx_counters.error;
             uint32_t mac_per         = UINT32_MAX;
+            char mac_per_str[40]     = "";
+
             if (mac_tx_attempts != 0)
             {
                 mac_per = (uint32_t)((DECIMAL_PRECISION * 100ULL * mac_tx_errors) / mac_tx_attempts);
             }
-            print_decimal(p_shell, "MAC PER", "%", mac_per);
+
+            parse_decimal(mac_per_str, "MAC PER", "%", mac_per);
+            buf_pos += sprintf(long_log_buf + buf_pos, "\r\n%s", mac_per_str);
         }
         else
         {
@@ -527,33 +607,50 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 uint32_t mac_tx_attempts = p_results->p_local_result->mac_tx_counters.total + p_results->p_remote_result->mac_tx_counters.total;
                 uint32_t mac_tx_errors   = p_results->p_local_result->mac_tx_counters.error + p_results->p_remote_result->mac_tx_counters.error;
                 uint32_t mac_per         = UINT32_MAX;
+                char mac_per_str[40]     = "";
+
                 if (mac_tx_attempts != 0)
                 {
                     mac_per = (uint32_t)((DECIMAL_PRECISION * 100ULL * mac_tx_errors) / mac_tx_attempts);
                 }
-                print_decimal(p_shell, "MAC PER", "%", mac_per);
+
+                parse_decimal(mac_per_str, "MAC PER", "%", mac_per);
+                // print_decimal(p_shell, "MAC PER", "%", mac_per);
+                buf_pos += sprintf(long_log_buf + buf_pos, "\r\n%s", mac_per_str);
             }
             else
             {
-                LOG_INF("MAC Counters:");
-                print_int(p_shell, "    MAC TX Total", "", p_results->p_local_result->mac_tx_counters.total);
-                print_int(p_shell, "    MAC TX Err", "", p_results->p_local_result->mac_tx_counters.error);
+
+                buf_pos += sprintf(long_log_buf + buf_pos,
+                                   "\r\nMAC Counters:"
+                                   "\r\n    MAC TX Total: %u"
+                                   "\r\n    MAC TX Err: %u",
+                                   p_results->p_local_result->mac_tx_counters.total,
+                                   p_results->p_local_result->mac_tx_counters.error);
+                // LOG_INF("MAC Counters:");
+                // print_int(p_shell, "    MAC TX Total", "", p_results->p_local_result->mac_tx_counters.total);
+                // print_int(p_shell, "    MAC TX Err", "",   p_results->p_local_result->mac_tx_counters.error);
             }
         }
 
-        LOG_INF("Raw data:");
-        LOG_INF("    Config:");
+        LOG_INF("\r\n%s", log_strdup(long_log_buf));
+        buf_pos = 0;
+
+        buf_pos += sprintf(long_log_buf+buf_pos,
+                           "\r\nRaw data:"
+                           "\r\n    Config:");
         dump_config(&m_test_configuration);
 
-        LOG_INF("    Status:");
+        buf_pos += sprintf(long_log_buf + buf_pos,
+                           "\r\n    Status:");
         dump_status(p_results->p_local_status);
 
-        LOG_INF("    Local:");
+        buf_pos += sprintf(long_log_buf + buf_pos, "\r\n    Local:");
         dump_result(p_results->p_local_result);
 
         if (p_results->p_remote_result != NULL)
         {
-            LOG_INF("    Remote:");
+            buf_pos += sprintf(long_log_buf + buf_pos, "\r\n    Remote:");
             dump_result(p_results->p_remote_result);
         }
 

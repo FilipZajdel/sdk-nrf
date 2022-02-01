@@ -27,6 +27,8 @@
 #define BENCHMARK_THREAD_PRIO       7
 #define BENCHMARK_THREAD_OPTS       0
 
+#define BENCHMARK_DEFAULT_TIMEOUT_MS 1000
+
 extern int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data);
 
 
@@ -335,7 +337,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
 {
     struct ping_req_data *p_request = &entry->ping_req_data;
 
-    printk("Benchmark ping evt handler!! state %u\n", evt);
+    LOG_DBG("Benchmark ping evt handler!! state %u", evt);
 
     switch (evt)
     {
@@ -457,8 +459,9 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
 
     ping_req.packet_info.dst_addr.addr_short =
         m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
-    ping_req.packet_info.dst_addr_mode = ZB_APS_ADDR_MODE_16_ENDP_PRESENT;
+    ping_req.packet_info.dst_addr_mode = ADDR_SHORT;
     ping_req.count = mp_test_configuration->length;
+    ping_req.timeout_ms = BENCHMARK_DEFAULT_TIMEOUT_MS;
 
     switch (mp_test_configuration->mode)
     {
@@ -689,7 +692,7 @@ static void benchmark_thread_loop(void *p1, void *p2, void *p3)
     while (true)
     {
         benchmark_process();
-        k_usleep(500);
+        k_usleep(10);
     }
 }
 
@@ -707,7 +710,7 @@ void benchmark_init(void)
                     NULL, NULL, NULL, BENCHMARK_THREAD_PRIO,
                     BENCHMARK_THREAD_OPTS, K_NO_WAIT);
 
-    LOG_DBG("Benchmark component has been initialized");
+    LOG_INF("Benchmark component has been initialized");
 }
 
 uint32_t benchmark_test_init(benchmark_configuration_t * p_configuration, benchmark_callback_t callback)
