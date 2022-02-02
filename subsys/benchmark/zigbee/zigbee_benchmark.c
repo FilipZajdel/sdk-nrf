@@ -683,7 +683,7 @@ void zigbee_benchmark_command_response_handler(zigbee_benchmark_ctrl_t cmd_id, z
 /**@brief Aborts current benchmark test execution. */
 void zigbee_benchmark_test_abort(void)
 {
-    // LOG_WARNING("Abort benchmark execution.");
+    LOG_WRN("Abort benchmark execution.");
     benchmark_test_stop();
 }
 

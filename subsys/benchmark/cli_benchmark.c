@@ -78,7 +78,7 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
     switch (p_evt->evt)
     {
         case BENCHMARK_TEST_COMPLETED:
-            LOG_INF("Test completed.\n");
+            LOG_INF("Test completed.");
             // cli_suppress_disable();
             print_test_results(&(p_evt->context));
             // benchmark_ble_flood_stop();
@@ -350,33 +350,6 @@ static void cmd_peer_select(const struct shell *shell, size_t argc, char **argv)
     }
 }
 
-static void print_int(const struct shell *shell, const char *p_description, const char *p_unit, uint32_t value)
-{
-    if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
-    {
-        LOG_INF("%s: %lu%s", p_description, value, p_unit);
-    }
-    else
-    {
-        LOG_INF("%s: Not supported", p_description);
-    }
-}
-
-static void print_decimal(const struct shell *shell, const char *p_description, const char *p_unit, uint32_t value)
-{
-    if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
-    {
-        uint32_t value_int       = value / DECIMAL_PRECISION;
-        uint32_t value_remainder = value % DECIMAL_PRECISION;
-
-        LOG_INF("%s: %lu.%02lu%s", p_description, value_int, value_remainder, p_unit);
-    }
-    else
-    {
-        LOG_INF("%s: Not supported\n", p_description);
-    }
-}
-
 static void parse_decimal(char *buf_out, const char *p_description, const char *p_unit, uint32_t value)
 {
     if (value != BENCHMARK_COUNTERS_VALUE_NOT_SUPPORTED)
@@ -424,19 +397,24 @@ static void dump_status(benchmark_status_t * p_status)
     if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
     {
         uint32_t avg = 0;
-        char latency_parsed[3][60] = {"", "", ""};
+        char latency_min[25] = "";
+        char latency_max[25] = "";
+        char latency_avg[25] = "";
 
         if (p_status->latency.cnt > 0)
         {
-            avg = (uint32_t)(p_status->latency.sum / p_status->latency.cnt);
+            avg = (uint32_t)(p_status->latency.sum * DECIMAL_PRECISION / (p_status->latency.cnt));
         }
 
-        parse_decimal(latency_parsed[0], "            Min", "ms", p_status->latency.min * DECIMAL_PRECISION / 10);
-        parse_decimal(latency_parsed[1], "            Max", "ms", p_status->latency.max * DECIMAL_PRECISION / 10);
-        parse_decimal(latency_parsed[2], "            Avg", "ms", avg * DECIMAL_PRECISION / 10);
+        parse_decimal(latency_min, "Min", "ms", p_status->latency.min * DECIMAL_PRECISION);
+        parse_decimal(latency_max, "Max", "ms", p_status->latency.max * DECIMAL_PRECISION);
+        parse_decimal(latency_avg, "Avg", "ms", avg);
 
-        buf_pos += sprintf(long_log_buf + buf_pos, "\r\n        Latency:\r\n%s\r\n%s\r\n%s",
-                           latency_parsed[0], latency_parsed[1], latency_parsed[2]);
+        buf_pos += sprintf(long_log_buf + buf_pos, "\r\n        Latency:"
+                                                   "\r\n           %s"
+                                                   "\r\n           %s"
+                                                   "\r\n           %s",
+                           latency_min, latency_max, latency_avg);
     }
 
     LOG_INF("\r\n%s", log_strdup(long_log_buf));
@@ -467,18 +445,6 @@ static void dump_result(benchmark_result_t * p_result)
     LOG_INF("\r\n%s", log_strdup(long_log_buf));
     buf_pos = 0;
     // print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
-    // print_int(p_shell, "        Duration", "ms", p_result->duration);
-
-    // LOG_INF("        App counters:");
-
-    // print_int(p_shell, "            Bytes received", "B", p_result->rx_counters.bytes_received);
-    // print_int(p_shell, "            Packets received", "", p_result->rx_counters.packets_received);
-    // print_int(p_shell, "            RX error", "", p_result->rx_counters.rx_error);
-    // print_int(p_shell, "            RX total", "", p_result->rx_counters.rx_total);
-
-    // LOG_INF("        Mac counters:");
-    // print_int(p_shell, "            TX error", "", p_result->mac_tx_counters.error);
-    // print_int(p_shell, "            TX total", "", p_result->mac_tx_counters.total);
 }
 
 // static void dump_ble_result(benchmark_ble_results_t * p_result)
@@ -510,21 +476,24 @@ static void print_test_results(benchmark_event_context_t * p_context)
         uint32_t txed_bits                                = m_test_configuration.length * packets_sent * 8;
         uint32_t throughput                               = (uint32_t)(txed_bits / test_duration);
         uint32_t throughput_rtx                           = (uint32_t)((acked_bytes * 1000ULL) / (test_duration * 128ULL));
+        uint32_t latency_sum                              = (uint32_t)p_results->p_local_status->latency.sum*2;
 
         char throughput_str[60] = "";
         char throughput_rtx_str[60] = "";
 
-        parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
-        parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
+        // parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
+        // parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
 
-        // benchmark_ble_ping_results_t * p_ble_ping_results = benchmark_ble_continuous_results_get();
+
+        parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / latency_sum);
+        parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (latency_sum * 128ULL));
+
 
         buf_pos += sprintf(long_log_buf + buf_pos,
                            "\r\nsent packets: %u\r\nacked packets: %u\r\ntxed bytes: %u\r\nacked bytes: %u",
                            packets_sent, packets_acked, txed_bytes, acked_bytes);
 
-        buf_pos += sprintf(long_log_buf + buf_pos, "\r\nTest duration: %u ms",
-                           p_results->p_local_result->duration);
+        buf_pos += sprintf(long_log_buf + buf_pos, "\r\nTest duration: %u ms", test_duration);
 
         if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
         {
