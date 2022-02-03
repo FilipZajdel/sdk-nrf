@@ -3,24 +3,35 @@
 #include <zephyr.h>
 #include <shell/shell.h>
 #include <logging/log.h>
+#include <string.h>
 
 #include <benchmark_cli_util.h>
 #include "protocol_api.h"
 #include "benchmark_zigbee_common.h"
 
+#define LOG_BUF_SIZE (512)
+
 LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
-void protocol_cmd_peer_db_get(const struct shell *shell, const benchmark_peer_db_t * p_peers)
+void protocol_cmd_peer_db_get(const struct shell *shell, const benchmark_peer_db_t *p_peers)
 {
-    LOG_INF("\r\n# ||    Device ID   || 16-bit network address\r\n");
+    char peers_info[LOG_BUF_SIZE] = "# ||    Device ID   || 16-bit network address";
+    char peers_info_len = strlen(peers_info);
 
     for (uint16_t i = 0; i < p_peers->peer_count; i++)
     {
-        LOG_INF("[%d]:  %08x%08x  %04x\r\n",
-                i,
-                DEVICE_ID_HI(p_peers->peer_table[i].device_id),
-                DEVICE_ID_LO(p_peers->peer_table[i].device_id),
-                p_peers->peer_table[i].p_address->nwk_addr);
+        peers_info_len += sprintf(peers_info + peers_info_len,
+                                  "\r\n[%d]:  %08x%08x  %04x",
+                                  i,
+                                  DEVICE_ID_HI(p_peers->peer_table[i].device_id),
+                                  DEVICE_ID_LO(p_peers->peer_table[i].device_id),
+                                  p_peers->peer_table[i].p_address->nwk_addr);
+    }
+
+    if (shell != NULL) {
+        shell_info(shell, "\r\n%s", peers_info);
+    } else {
+        LOG_INF("\r\n%s", log_strdup(peers_info));
     }
 }
 

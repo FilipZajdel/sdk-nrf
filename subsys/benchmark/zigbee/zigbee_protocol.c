@@ -45,24 +45,6 @@ ZB_HA_DECLARE_CONFIGURATION_TOOL_EP(cli_agent_ep,
 ZB_HA_DECLARE_CONFIGURATION_TOOL_CTX(cli_agent_ctx, cli_agent_ep);
 
 
-/**@brief Zigbee stack event handler.
- *
- * @param[in]   bufid   Reference to the Zigbee stack buffer used to pass signal.
- */
-// void zboss_signal_handler(zb_bufid_t bufid)
-// {
-//     /* Update network status LED */
-//     zigbee_led_status_update(bufid, ZIGBEE_NETWORK_STATE_LED);
-
-//     /* Call default signal handler. */
-//     ZB_ERROR_CHECK(zigbee_default_signal_handler(bufid));
-
-//     if (bufid)
-//     {
-//         zb_buf_free(bufid);
-//     }
-// }
-
 bool protocol_is_error(uint32_t error_code)
 {
     return (zb_ret_t)error_code != RET_OK;

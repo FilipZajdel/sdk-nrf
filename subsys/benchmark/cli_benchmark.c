@@ -16,11 +16,17 @@ LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 #define DECIMAL_PRECISION 100
 #define BPS_TO_KBPS       1024
 
+#define LOG_BUFFER_STRDUP_NUM 8
+#define LOG_BUFFER_SIZE   (CONFIG_LOG_STRDUP_MAX_STRING * LOG_BUFFER_STRDUP_NUM)
+
+typedef struct log_buffer {
+    uint16_t buf_usage;
+    char buf[LOG_BUFFER_SIZE];
+} log_buffer_t;
+
 static void print_test_results(benchmark_event_context_t * p_context);
 
-static char long_log_buf[1024];
-static int buf_pos;
-
+static log_buffer_t results_log_buf;
 struct shell const *p_shell;
 static benchmark_peer_db_t *mp_peer_db;
 static benchmark_configuration_t m_test_configuration =
@@ -30,6 +36,39 @@ static benchmark_configuration_t m_test_configuration =
     .count        = 1000,
     .mode         = BENCHMARK_MODE_ACK,
 };
+
+static void log_buffer_flush(log_buffer_t *log_buf)
+{
+    for (uint16_t i=0; i < LOG_BUFFER_STRDUP_NUM; i++) {
+        LOG_INF("\r\n%s", log_strdup(log_buf->buf + (CONFIG_LOG_STRDUP_MAX_STRING * i)));
+    }
+
+    log_buf->buf_usage = 0;
+    memset(log_buf->buf, 0, LOG_BUFFER_SIZE);
+}
+
+/**
+ * @brief Check if log_buffer has sufficient space to put <bytes_needed> of bytes.
+ *
+ * @param log_buf points to buffer to check
+ * @param bytes_needed number of bytes needed to put into buffer
+ * @param flush if set to true, remaining bytes are flushed
+ * @return true if has sufficient space or space is available after flush
+ * @return false if not sufficient space is available and flush wasn't required
+ */
+static bool log_buffer_has_space(log_buffer_t *log_buf, uint16_t bytes_needed, bool flush)
+{
+    bool has_space = (log_buf->buf_usage + bytes_needed) < LOG_BUFFER_SIZE;
+
+    if (!has_space && flush)
+    {
+        log_buffer_flush(log_buf);
+
+        has_space = bytes_needed < LOG_BUFFER_SIZE;
+    }
+
+    return has_space;
+}
 
 static bool shell_help_requested(const struct shell *shell, int argc, char **argv)
 {
@@ -54,16 +93,11 @@ static const char *configuration_mode_name_get(benchmark_mode_t * p_mode)
     }
 }
 
-static void discovered_peers_print(void *pp_shell, uint16_t event_size)
+static void discovered_peers_print(const struct shell *shell)
 {
-    struct shell *shell = *((struct shell **)pp_shell);
-
-    (void)event_size;
-
     if (mp_peer_db != NULL)
     {
         protocol_cmd_peer_db_get(shell, mp_peer_db);
-        print_done(shell);
     }
     else
     {
@@ -122,7 +156,7 @@ static void benchmark_evt_handler(benchmark_evt_t * p_evt)
 
             LOG_INF("Discovery completed, found %d peers.", peer_count);
 
-            discovered_peers_print(&p_shell, sizeof(p_shell));
+            discovered_peers_print(NULL);
             break;
 
         default:
@@ -174,19 +208,15 @@ void cmd_config_get(const struct shell *shell, size_t argc, char ** argv)
         return;
     }
 
-    sprintf(long_log_buf, "=== Test settings ===\n"
-            "Mode:%10s\nACK Timeout:%10d [ms]\nPacket count:%10d\nPayload length [B]:%10d",
-            configuration_mode_name_get(&m_test_configuration.mode),
-            m_test_configuration.ack_timeout,
-            m_test_configuration.count,
-            m_test_configuration.length);
-
-    shell_info(shell, "%s", long_log_buf);
-    // shell_info(shell, "=== Test settings ===");
-    // shell_info(shell, "Mode:               %s", configuration_mode_name_get(&m_test_configuration.mode));
-    // shell_info(shell, "ACK Timeout:        %d [ms]", m_test_configuration.ack_timeout);
-    // shell_info(shell, "Packet count:       %d", m_test_configuration.count);
-    // shell_info(shell, "Payload length [B]: %d", m_test_configuration.length);
+    shell_info(shell, "=== Test settings ==="
+                      "\nMode:%10s"
+                      "\nACK Timeout:%10d [ms]"
+                      "\nPacket count:%10d"
+                      "\nPayload length [B]:%10d",
+                      configuration_mode_name_get(&m_test_configuration.mode),
+                      m_test_configuration.ack_timeout,
+                      m_test_configuration.count,
+                      m_test_configuration.length);
 }
 
 static void cmd_info_get(const struct shell *shell, size_t argc, char ** argv)
@@ -211,45 +241,35 @@ static void cmd_config_mode_get(const struct shell *shell, size_t argc, char **a
     }
 
     shell_info(shell, "%s\r\n", configuration_mode_name_get(&m_test_configuration.mode));
-    print_done(shell);
 }
 
 static void cmd_config_mode_unidirectional_set(const struct shell *shell, size_t argc, char ** argv)
 {
     m_test_configuration.mode = BENCHMARK_MODE_UNIDIRECTIONAL;
-    print_done(shell);
 }
 
-static void cmd_config_mode_echo_set(const struct shell *shell, size_t argc, char ** argv)
+static void cmd_config_mode_echo_set(const struct shell *shell, size_t argc, char **argv)
 {
     m_test_configuration.mode = BENCHMARK_MODE_ECHO;
-    print_done(shell);
 }
 
-static void cmd_config_mode_ack_set(const struct shell *shell, size_t argc, char ** argv)
+static void cmd_config_mode_ack_set(const struct shell *shell, size_t argc, char **argv)
 {
     m_test_configuration.mode = BENCHMARK_MODE_ACK;
-    print_done(shell);
 }
 
-static void cmd_config_ack_timeout(const struct shell *shell, size_t argc, char ** argv)
+static void cmd_config_ack_timeout(const struct shell *shell, size_t argc, char **argv)
 {
-    if (argc > 2)
+    if (argc == 1)
     {
-        print_error(shell, "Too many arguments\r\n");
+        shell_info(shell,"%d", m_test_configuration.ack_timeout);
         return;
     }
 
-    if (argc < 2)
-    {
-        shell_info(shell,"%d\r\n", m_test_configuration.ack_timeout);
-    }
-    else if (argc == 2)
+    if (argc == 2)
     {
         m_test_configuration.ack_timeout = atoi(argv[1]);
     }
-
-    print_done(shell);
 }
 
 static void cmd_config_packet_count(const struct shell *shell, size_t argc, char ** argv)
@@ -268,8 +288,6 @@ static void cmd_config_packet_count(const struct shell *shell, size_t argc, char
     {
         m_test_configuration.count = atoi(argv[1]);
     }
-
-    print_done(shell);
 }
 
 static void cmd_config_packet_length(const struct shell *shell, size_t argc, char ** argv)
@@ -288,8 +306,6 @@ static void cmd_config_packet_length(const struct shell *shell, size_t argc, cha
     {
         m_test_configuration.length = atoi(argv[1]);
     }
-
-    print_done(shell);
 }
 
 /** Peer configuration commands */
@@ -315,7 +331,7 @@ static void cmd_discover_peers(const struct shell *shell, size_t argc, char ** a
 
 static void cmd_display_peers(const struct shell *shell, size_t argc, char **argv)
 {
-    discovered_peers_print(&shell, 0);
+    discovered_peers_print(shell);
 }
 
 static void cmd_peer_select(const struct shell *shell, size_t argc, char **argv)
@@ -335,14 +351,12 @@ static void cmd_peer_select(const struct shell *shell, size_t argc, char **argv)
     if (argc == 1)
     {
         shell_info(shell, "%d\r\n", mp_peer_db->selected_peer);
-        print_done(shell);
         return;
     }
 
     if (mp_peer_db->peer_count > atoi(argv[1]))
     {
         mp_peer_db->selected_peer = atoi(argv[1]);
-        print_done(shell);
     }
     else
     {
@@ -367,20 +381,22 @@ static void parse_decimal(char *buf_out, const char *p_description, const char *
 
 static void dump_config(benchmark_configuration_t * p_config)
 {
-    const char * const modes[] = {"Unidirectional", "Echo", "ACK"};
+    const char *const modes[] = {"Unidirectional", "Echo", "ACK"};
 
-    buf_pos += sprintf(long_log_buf + buf_pos,
-                       "\r\n        Length: %u"
-                       "\r\n        ACK timeout: %u ms"
-                       "\r\n        Count: %u"
-                       "\r\n        Mode: %s",
-                       p_config->length, p_config->ack_timeout, p_config->count,
-                       modes[p_config->mode]);
+    (void)log_buffer_has_space(&results_log_buf, 150, true);
+    results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
+                                         "\r\n        Length: %u"
+                                         "\r\n        ACK timeout: %u ms"
+                                         "\r\n        Count: %u"
+                                         "\r\n        Mode: %s",
+                                         p_config->length, p_config->ack_timeout, p_config->count,
+                                         modes[p_config->mode]);
 }
 
 static void dump_status(benchmark_status_t * p_status)
 {
-    buf_pos += sprintf(long_log_buf + buf_pos,
+    (void)log_buffer_has_space(&results_log_buf, 190, true);
+    results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                       "\r\n        Test in progress: %s"
                       "\r\n        Reset counters: %s"
                       "\r\n        ACKs lost: %u"
@@ -410,40 +426,38 @@ static void dump_status(benchmark_status_t * p_status)
         parse_decimal(latency_max, "Max", "ms", p_status->latency.max * DECIMAL_PRECISION);
         parse_decimal(latency_avg, "Avg", "ms", avg);
 
-        buf_pos += sprintf(long_log_buf + buf_pos, "\r\n        Latency:"
-                                                   "\r\n           %s"
-                                                   "\r\n           %s"
-                                                   "\r\n           %s",
-                           latency_min, latency_max, latency_avg);
+        (void)log_buffer_has_space(&results_log_buf, 75, true);
+        results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
+                                             "\r\n        Latency:"
+                                             "\r\n           %s"
+                                             "\r\n           %s"
+                                             "\r\n           %s",
+                                             latency_avg, latency_max, latency_min);
     }
 
-    LOG_INF("\r\n%s", log_strdup(long_log_buf));
-    buf_pos = 0;
+    results_log_buf.buf_usage = 0;
 }
 
 static void dump_result(benchmark_result_t * p_result)
 {
-    char cpu_util_buf[40] = "";
+    log_buffer_has_space(&results_log_buf, 200, true);
+    results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
+                       "\r\nDuration: %u ms"
+                       "\r\nApp counters:"
+                       "\r\n    Bytes received: %uB"
+                       "\r\n    Packets received: %u"
+                       "\r\n    RX error: %u"
+                       "\r\n    RX total: %u"
+                       "\r\nMac counters:"
+                       "\r\n    TX error: %u"
+                       "\r\n    TX total: %u",
+                       p_result->duration, p_result->rx_counters.bytes_received,
+                       p_result->rx_counters.packets_received, p_result->rx_counters.rx_error,
+                       p_result->rx_counters.rx_total, p_result->mac_tx_counters.error,
+                       p_result->mac_tx_counters.total);
 
-    parse_decimal(cpu_util_buf, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
-
-    buf_pos += sprintf(long_log_buf + buf_pos, "%s"
-                          "\r\n        Duration: %u ms"
-                          "\r\n        App counters:"
-                          "\r\n            Bytes received: %uB"
-                          "\r\n            Packets received: %u"
-                          "\r\n            RX error: %u"
-                          "\r\n            RX total: %u"
-                          "\r\n        Mac counters:"
-                          "\r\n            TX error: %u"
-                          "\r\n            TX total: %u",
-                          cpu_util_buf, p_result->duration, p_result->rx_counters.bytes_received,
-                          p_result->rx_counters.packets_received, p_result->rx_counters.rx_error,
-                          p_result->rx_counters.rx_total, p_result->mac_tx_counters.error,
-                          p_result->mac_tx_counters.total);
-
-    LOG_INF("\r\n%s", log_strdup(long_log_buf));
-    buf_pos = 0;
+    // LOG_INF("\r\n%s", log_strdup(results_log_buf.buf));
+    // results_log_buf.buf_usage = 0;
     // print_decimal(p_shell, "        CPU utilization", "%", p_result->cpu_utilization * DECIMAL_PRECISION / 100);
 }
 
@@ -464,7 +478,8 @@ static void print_test_results(benchmark_event_context_t * p_context)
         return;
     }
 
-    buf_pos += sprintf(long_log_buf, "\r\n=== Test Finished ===");
+    (void)log_buffer_has_space(&results_log_buf, 20, true);
+    results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage, "\r\n=== Test Finished ===");
 
     if ((p_results->p_local_status != NULL) && (p_results->p_local_result != NULL) && (p_results->p_local_result->duration != 0))
     {
@@ -481,19 +496,18 @@ static void print_test_results(benchmark_event_context_t * p_context)
         char throughput_str[60] = "";
         char throughput_rtx_str[60] = "";
 
-        // parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
-        // parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
-
-
-        parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / latency_sum);
-        parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (latency_sum * 128ULL));
-
-
-        buf_pos += sprintf(long_log_buf + buf_pos,
-                           "\r\nsent packets: %u\r\nacked packets: %u\r\ntxed bytes: %u\r\nacked bytes: %u",
-                           packets_sent, packets_acked, txed_bytes, acked_bytes);
-
-        buf_pos += sprintf(long_log_buf + buf_pos, "\r\nTest duration: %u ms", test_duration);
+        if (latency_sum > 0) {
+            parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / latency_sum);
+            parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (latency_sum * 128ULL));
+        } else {
+            parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
+            parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
+        }
+        (void)log_buffer_has_space(&results_log_buf, 100, true);
+        results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
+                           "\r\nPackets sent: %u\r\nPackets acked: %u\r\nBytes sent: %u\r\nBytes acked: %u"
+                           "\r\nTest duration: %ums",
+                           packets_sent, packets_acked, txed_bytes, acked_bytes, test_duration);
 
         if (m_test_configuration.mode == BENCHMARK_MODE_ECHO)
         {
@@ -507,30 +521,21 @@ static void print_test_results(benchmark_event_context_t * p_context)
 
             parse_decimal(avg_str, "    Avg", "", avg);
 
-            buf_pos += sprintf(long_log_buf + buf_pos,
+            (void)log_buffer_has_space(&results_log_buf, 60, true);
+            results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                                "\r\nLatency:"
+                               "\r\n%s"
                                "\r\n    Min: %u"
-                               "\r\n    Max: %u"
-                               "\r\n%s",
+                               "\r\n    Max: %u",
+                               avg_str,
                                p_results->p_local_status->latency.min,
-                               p_results->p_local_status->latency.max,
-                               avg_str);
-
+                               p_results->p_local_status->latency.max);
         }
-
-        buf_pos += sprintf(long_log_buf + buf_pos, "\r\nAverage CPU utilization:");
-
-        // LOG_INF("Average CPU utilization:");
-        // print_decimal(p_shell, "    Local", "%", p_results->p_local_result->cpu_utilization * DECIMAL_PRECISION / 100);
-
-        // if (p_results->p_remote_result != NULL)
-        // {
-        //     print_decimal(p_shell, "    Remote", "%", p_results->p_remote_result->cpu_utilization * DECIMAL_PRECISION / 100);
-        // }
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
         {
-            buf_pos += sprintf(long_log_buf + buf_pos,
+            (void)log_buffer_has_space(&results_log_buf, 40, true);
+            results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                                "\r\nUnidirectional:"
                                "\r\n%s", throughput_str);
         }
@@ -547,11 +552,13 @@ static void print_test_results(benchmark_event_context_t * p_context)
             parse_decimal(per_str[0], "    PER", "%", per);
             parse_decimal(per_str[1], "    PER", "%", 0);
 
-            buf_pos += sprintf(long_log_buf + buf_pos, "\r\nWithout retransmissions:"
-                               "\r\n%s" "\r\n%s"
-                               "\r\nWith retransmissions:"
-                               "\r\n%s" "\r\n%s",
-                               per_str[0], throughput_str, per_str[1], throughput_rtx_str);
+            (void)log_buffer_has_space(&results_log_buf, 100, true);
+            results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
+                                                 "\r\nWithout retransmissions:"
+                                                 "\r\n%s" "\r\n%s"
+                                                 "\r\nWith retransmissions:"
+                                                 "\r\n%s" "\r\n%s",
+                                                 per_str[0], throughput_str, per_str[1], throughput_rtx_str);
         }
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
@@ -567,7 +574,8 @@ static void print_test_results(benchmark_event_context_t * p_context)
             }
 
             parse_decimal(mac_per_str, "MAC PER", "%", mac_per);
-            buf_pos += sprintf(long_log_buf + buf_pos, "\r\n%s", mac_per_str);
+            (void)log_buffer_has_space(&results_log_buf, 30, true);
+            results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage, "\r\n%s", mac_per_str);
         }
         else
         {
@@ -584,13 +592,14 @@ static void print_test_results(benchmark_event_context_t * p_context)
                 }
 
                 parse_decimal(mac_per_str, "MAC PER", "%", mac_per);
-                // print_decimal(p_shell, "MAC PER", "%", mac_per);
-                buf_pos += sprintf(long_log_buf + buf_pos, "\r\n%s", mac_per_str);
+
+                (void)log_buffer_has_space(&results_log_buf, 40, true);
+                results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage, "\r\n%s", mac_per_str);
             }
             else
             {
-
-                buf_pos += sprintf(long_log_buf + buf_pos,
+                (void)log_buffer_has_space(&results_log_buf, 60, true);
+                results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                                    "\r\nMAC Counters:"
                                    "\r\n    MAC TX Total: %u"
                                    "\r\n    MAC TX Err: %u",
@@ -602,38 +611,30 @@ static void print_test_results(benchmark_event_context_t * p_context)
             }
         }
 
-        LOG_INF("\r\n%s", log_strdup(long_log_buf));
-        buf_pos = 0;
-
-        buf_pos += sprintf(long_log_buf+buf_pos,
-                           "\r\nRaw data:"
-                           "\r\n    Config:");
+        (void)log_buffer_has_space(&results_log_buf, 30, true);
+        results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
+                                             "\r\nRaw data:"
+                                             "\r\n    Config:");
         dump_config(&m_test_configuration);
 
-        buf_pos += sprintf(long_log_buf + buf_pos,
+        (void)log_buffer_has_space(&results_log_buf, 20, true);
+        results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                            "\r\n    Status:");
         dump_status(p_results->p_local_status);
 
-        buf_pos += sprintf(long_log_buf + buf_pos, "\r\n    Local:");
+        (void)log_buffer_has_space(&results_log_buf, 10, true);
+        results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage, "\r\nLocal:");
         dump_result(p_results->p_local_result);
 
         if (p_results->p_remote_result != NULL)
         {
-            buf_pos += sprintf(long_log_buf + buf_pos, "\r\n    Remote:");
+            (void)log_buffer_has_space(&results_log_buf, 10, true);
+            results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage, "\r\nRemote:");
             dump_result(p_results->p_remote_result);
         }
-
-        // if (p_ble_ping_results != NULL)
-        // {
-        //     shell_info(p_shell, "    BLE local:\r\n");
-        //     dump_ble_result(&p_ble_ping_results->local_results);
-
-        //     shell_info(p_shell, "    BLE remote:\r\n");
-        //     dump_ble_result(&p_ble_ping_results->remote_results);
-        // }
     }
 
-    print_done(p_shell);
+    log_buffer_flush(&results_log_buf);
 }
 
 static void cmd_test_start(const struct shell *shell, size_t argc, char ** argv)
@@ -672,10 +673,6 @@ static void cmd_test_stop(const struct shell *shell, size_t argc, char ** argv)
     {
         print_error(shell, "Failed to stop test.");
     }
-    else
-    {
-        print_done(shell);
-    }
 }
 
 static void cmd_peer_test_results(const struct shell *shell, size_t argc, char ** argv)
@@ -709,7 +706,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_peer,
 
 SHELL_STATIC_SUBCMD_SET_CREATE(test_configure_cmds,
     SHELL_CMD_ARG(ack-timeout, NULL,
-        "[Not supported] Set time after we stop waiting for the acknowledgment from the peer in milliseconds",
+        "Set time after we stop waiting for the acknowledgment from the peer in milliseconds",
                   cmd_config_ack_timeout, 1, 1),
     SHELL_CMD_ARG(count, NULL, "Set number of packets to be sent",
                   cmd_config_packet_count, 1, 1),

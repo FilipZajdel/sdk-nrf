@@ -12,35 +12,20 @@
 #include "zigbee_cli_ping_types.h"
 #include "zigbee_benchmark_internal.h"
 
-
-#if defined ZIGBEE_NRF_RADIO_STATISTICS
-#include "zigbee_statistics.h"
-#endif /* ZIGBEE_NRF_RADIO_STATISTICS */
-
-#define CMD_ZB_PING_ARGS_NUM 4
-#define CMD_SHELL_ARG_STRLEN 12
-
-#define CMD_ZB_PING_ARG_NO_ECHO "--no-echo"
-#define CMD_ZB_PING_ARG_REQ_ACK "--aps-ack"
+LOG_MODULE_REGISTER(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define BENCHMARK_THREAD_STACK_SIZE 1024
 #define BENCHMARK_THREAD_PRIO       7
 #define BENCHMARK_THREAD_OPTS       0
 
-#define BENCHMARK_DEFAULT_TIMEOUT_MS 1000
-
 extern int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data);
 
-
-LOG_MODULE_REGISTER(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
 typedef union
 {
     zb_ieee_addr_t arr_addr;
     uint64_t       uint_addr;
 } eui64_map_addr_t;
-
-typedef char cmd_arg_t[CMD_SHELL_ARG_STRLEN];
 
 static void discovery_timeout(struct k_timer *timer);
 
@@ -435,9 +420,10 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
 }
 
 /**@brief Function that constructs and sends ping request. */
-static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
+static void zigbee_benchmark_send_ping_req(void)
 {
     struct ping_req_data ping_req;
+
     LOG_DBG("Sending ping request");
 
     if (m_test_status.packets_left_count == 0)
@@ -450,18 +436,11 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
         return;
     }
 
-    if (mp_test_configuration->length > PING_MAX_LENGTH)
-    {
-        m_state = TEST_ERROR;
-        LOG_ERR("Packet length value is too big: max %u", PING_MAX_LENGTH);
-        return;
-    }
-
     ping_req.packet_info.dst_addr.addr_short =
         m_peer_information.peer_table[m_peer_information.selected_peer].p_address->nwk_addr;
     ping_req.packet_info.dst_addr_mode = ADDR_SHORT;
     ping_req.count = mp_test_configuration->length;
-    ping_req.timeout_ms = BENCHMARK_DEFAULT_TIMEOUT_MS;
+    ping_req.timeout_ms = mp_test_configuration->ack_timeout;
 
     switch (mp_test_configuration->mode)
     {
@@ -492,7 +471,11 @@ static void zigbee_benchmark_send_ping_req(nrf_cli_t *p_cli)
             break;
     }
 
-    cmd_zb_ping_generic(p_shell, &ping_req);
+    if (0 != cmd_zb_ping_generic(p_shell, &ping_req))
+    {
+        LOG_ERR("Error occured while sending ping request");
+        m_state = TEST_ERROR;
+    }
 }
 
 /**@brief Function that starts benchmark test in master mode. */
@@ -513,7 +496,7 @@ static void zigbee_benchmark_test_start_master(void)
     m_start_time                   = ZB_TIMER_GET();
 
     m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
-    zigbee_benchmark_send_ping_req(NULL);
+    zigbee_benchmark_send_ping_req();
 
     if (mp_callback)
     {
@@ -875,7 +858,7 @@ void benchmark_process(void)
         case TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER:
             // Retry sending the next buffer.
             LOG_DBG("TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER state");
-            zigbee_benchmark_send_ping_req(NULL);
+            zigbee_benchmark_send_ping_req();
             break;
 
         case TEST_IN_PROGRESS_FRAME_SENT:
@@ -883,7 +866,7 @@ void benchmark_process(void)
             {
                 LOG_DBG("Test frame sent, prepare next frame.");
                 m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
-                zigbee_benchmark_send_ping_req(NULL);
+                zigbee_benchmark_send_ping_req();
             }
             else
             {
