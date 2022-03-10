@@ -16,25 +16,21 @@
 
 #define ZIGBEE_CLI_ENDPOINT                 64
 
-#if !defined ZB_ROUTER_ROLE
-#error Define ZB_ROUTER_ROLE to compile CLI agent (Router) source code.
-#endif
-
 static zb_uint8_t         m_attr_zcl_version   = ZB_ZCL_VERSION;
 static zb_uint8_t         m_attr_power_source  = ZB_ZCL_BASIC_POWER_SOURCE_UNKNOWN;
 static zb_uint16_t        m_attr_identify_time = 0;
 
 /* Declare attribute list for Basic cluster. */
-ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST(basic_attr_list, &m_attr_zcl_version, &m_attr_power_source);
+ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST(benchmark_basic_attr_list, &m_attr_zcl_version, &m_attr_power_source);
 
 /* Declare attribute list for Identify cluster. */
-ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &m_attr_identify_time);
+ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(benchmark_identify_attr_list, &m_attr_identify_time);
 
 /* Declare cluster list for CLI Agent device. */
 /* Only clusters Identify and Basic have attributes. */
 ZB_HA_DECLARE_CONFIGURATION_TOOL_CLUSTER_LIST(cli_agent_clusters,
-                                              basic_attr_list,
-                                              identify_attr_list);
+                                              benchmark_basic_attr_list,
+                                              benchmark_identify_attr_list);
 
 /* Declare endpoint for CLI Agent device. */
 ZB_HA_DECLARE_CONFIGURATION_TOOL_EP(cli_agent_ep,
@@ -69,7 +65,6 @@ void protocol_init(void)
     zb_osif_get_ieee_eui64(ieee_addr);
     zb_set_long_address(ieee_addr);
 
-    // zb_set_bdb_primary_channel_set(IEEE_CHANNEL_MASK);
     zb_set_nvram_erase_at_start(ERASE_PERSISTENT_CONFIG);
 
     /* Register CLI Agent device context (endpoints). */
@@ -78,11 +73,6 @@ void protocol_init(void)
 
 void protocol_process(void)
 {
-    // LOG_INF("Implement me!!");
-    // if (zb_cli_is_stack_started())
-    // {
-    //     zboss_main_loop_iteration();
-    // }
 }
 
 void protocol_sleep(void)

@@ -15,7 +15,7 @@ LOG_MODULE_DECLARE(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 
 void protocol_cmd_peer_db_get(const struct shell *shell, const benchmark_peer_db_t *p_peers)
 {
-    char peers_info[LOG_BUF_SIZE] = "# ||    Device ID   || 16-bit network address";
+    char peers_info[LOG_BUF_SIZE] = "# ||\tDevice ID\t|| 16-bit network address";
     char peers_info_len = strlen(peers_info);
 
     for (uint16_t i = 0; i < p_peers->peer_count; i++)
@@ -102,3 +102,56 @@ void protocol_cmd_remote_send(const struct shell *shell, const nrf_cli_t * p_pee
     /* Remote command execution is not implemented in Zigbee benchmark. */
     return;
 }
+
+static bool isdigit(char possible_digit)
+{
+    return (possible_digit <= '9') && (possible_digit >= '0');
+}
+
+static void tx_power_cmd(const struct shell *shell, size_t argc, char **argv)
+{
+    if (argc == 1)
+    {
+        zb_int8_t tx_power = zb_mac_get_tx_power();
+
+        shell_info(shell, "Zigbee TX power is set to: %d dBm", tx_power);
+    }
+
+    if (argc == 2)
+    {
+        int8_t tx_power;
+        char *new_tx_power = argv[1];
+        uint32_t arg_len = strlen(argv[1]);
+        bool is_negative = new_tx_power[0] == '-';
+
+        if (arg_len > 4) {
+            goto parse_failed;
+        }
+
+        if (!(is_negative || isdigit(new_tx_power[0]))) {
+            goto parse_failed;
+        }
+
+        for (int i = (int)is_negative; i < arg_len; i++) {
+            if (!isdigit(new_tx_power[i])) {
+                goto parse_failed;
+            }
+        }
+
+        tx_power = atoi(new_tx_power);
+        zb_mac_set_tx_power(tx_power);
+
+        shell_info(shell, "Setting the tx power to %d dBm", tx_power);
+    }
+
+    return;
+parse_failed:
+    shell_error(shell, "Invalid value (%s) The tx power can be set to value between: <-127, 127>", argv[1]);
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(bm_zigbee_extension,
+    SHELL_CMD_ARG(tx_power, NULL, "Get/Set radio power", tx_power_cmd, 1, 1),
+    SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(test_zigbee, &bm_zigbee_extension, "Extended benchmark Zigbee commands", NULL);

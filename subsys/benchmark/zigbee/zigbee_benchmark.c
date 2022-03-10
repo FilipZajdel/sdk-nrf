@@ -19,7 +19,7 @@ LOG_MODULE_REGISTER(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 #define BENCHMARK_THREAD_OPTS       0
 
 extern int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data);
-
+static void zigbee_benchmark_send_ping_req(void);
 
 typedef union
 {
@@ -64,7 +64,7 @@ static benchmark_status_t m_test_status =
 /**@brief Function that triggers calculation of the test duration. */
 static void benchmark_test_duration_calculate(void)
 {
-    m_local_result.duration = ZB_TIME_BEACON_INTERVAL_TO_MSEC(ZB_TIMER_GET() - m_start_time);
+    m_local_result.duration = timer_ticks_from_uptime() - m_start_time;
 }
 
 /**@brief Function that reads current MAC-level statistics from the radio.
@@ -311,6 +311,21 @@ static zb_ret_t zigbee_benchmark_peer_discovery_request_send(void)
     return RET_OK;
 }
 
+static void schedule_next_frame(void)
+{
+    if (m_test_status.packets_left_count > 0)
+    {
+        // LOG_DBG("Test frame sent, prepare next frame.");
+        m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
+        zigbee_benchmark_send_ping_req();
+    }
+    else
+    {
+        LOG_INF("Test frame sent, test finished.");
+        m_state = TEST_FINISHED;
+    }
+}
+
 /**@brief  Ping event handler. Updates RX counters and changes state to send next request.
  *
  * @param[in] evt_type  Type of received  ping acknowledgment
@@ -322,7 +337,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
 {
     struct ping_req_data *p_request = &entry->ping_req_data;
 
-    LOG_DBG("Benchmark ping evt handler!! state %u", evt);
+    // LOG_DBG("Benchmark ping evt handler!! state %u", evt);
 
     switch (evt)
     {
@@ -330,6 +345,7 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
             if (m_state == TEST_IN_PROGRESS_FRAME_SENDING)
             {
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                schedule_next_frame();
             }
             break;
 
@@ -339,7 +355,8 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                LOG_DBG("Transmission time: %u us", delay_us / 2);
+                // LOG_DBG("Transmission time: %u us", delay_us / 2);
+                schedule_next_frame();
             }
             break;
 
@@ -349,7 +366,8 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
                 benchmark_update_latency(&m_test_status.latency, delay_us / 2);
-                LOG_DBG("Transmission time: %u us", delay_us / 2);
+                // LOG_DBG("Transmission time: %u us", delay_us / 2);
+                schedule_next_frame();
             }
             break;
 
@@ -360,7 +378,8 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                 m_test_status.waiting_for_ack = 0;
                 m_test_status.acks_lost++;
                 m_state = TEST_IN_PROGRESS_FRAME_SENT;
-                LOG_DBG("Transmission timed out.");
+                // LOG_DBG("Transmission timed out.");
+                schedule_next_frame();
             }
             break;
 
@@ -377,11 +396,13 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
                     if (mp_test_configuration->mode != BENCHMARK_MODE_UNIDIRECTIONAL)
                     {
                         m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                        schedule_next_frame();
                     }
                 }
                 else
                 {
                     m_state = TEST_IN_PROGRESS_FRAME_SENT;
+                    schedule_next_frame();
                 }
             }
             else
@@ -424,7 +445,7 @@ static void zigbee_benchmark_send_ping_req(void)
 {
     struct ping_req_data ping_req;
 
-    LOG_DBG("Sending ping request");
+    // LOG_DBG("Sending ping request");
 
     if (m_test_status.packets_left_count == 0)
     {
@@ -493,7 +514,7 @@ static void zigbee_benchmark_test_start_master(void)
 
     cpu_utilization_start();
     m_test_status.test_in_progress = true;
-    m_start_time                   = ZB_TIMER_GET();
+    m_start_time                   = timer_ticks_from_uptime();
 
     m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
     zigbee_benchmark_send_ping_req();
@@ -540,7 +561,7 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
 
     memset(&m_benchmark_evt, 0, sizeof(benchmark_evt_t));
     m_test_status.acks_lost = 0;
-    m_start_time            = ZB_TIMER_GET();
+    m_start_time            = timer_ticks_from_uptime();
 
     result_clear();
     cpu_utilization_start();
@@ -675,7 +696,7 @@ static void benchmark_thread_loop(void *p1, void *p2, void *p3)
     while (true)
     {
         benchmark_process();
-        k_usleep(10);
+        k_usleep(25);
     }
 }
 
@@ -862,17 +883,6 @@ void benchmark_process(void)
             break;
 
         case TEST_IN_PROGRESS_FRAME_SENT:
-            if (m_test_status.packets_left_count > 0)
-            {
-                LOG_DBG("Test frame sent, prepare next frame.");
-                m_state = TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER;
-                zigbee_benchmark_send_ping_req();
-            }
-            else
-            {
-                LOG_INF("Test frame sent, test finished.");
-                m_state = TEST_FINISHED;
-            }
             break;
 
         case TEST_FINISHED:

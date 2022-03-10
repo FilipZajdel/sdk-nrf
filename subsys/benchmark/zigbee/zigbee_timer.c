@@ -109,3 +109,9 @@ uint32_t timer_ticks_to_ms(uint32_t ticks)
 {
     return ZB_TIME_BEACON_INTERVAL_TO_MSEC(ticks);
 }
+
+
+uint32_t timer_ticks_from_uptime(void)
+{
+    return (uint32_t)k_uptime_get();
+}
