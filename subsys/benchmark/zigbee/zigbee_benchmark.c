@@ -17,6 +17,7 @@ LOG_MODULE_REGISTER(benchmark, CONFIG_LOG_DEFAULT_LEVEL);
 #define BENCHMARK_THREAD_STACK_SIZE 1024
 #define BENCHMARK_THREAD_PRIO       7
 #define BENCHMARK_THREAD_OPTS       0
+#define BENCHMARK_THREAD_NAME       "benchmark"
 
 extern int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data);
 static void zigbee_benchmark_send_ping_req(void);
@@ -696,7 +697,7 @@ static void benchmark_thread_loop(void *p1, void *p2, void *p3)
     while (true)
     {
         benchmark_process();
-        k_usleep(25);
+        k_usleep(10);
     }
 }
 
@@ -707,12 +708,12 @@ void benchmark_init(void)
     zb_ping_set_ping_indication_cb(benchmark_ping_evt_handler);
     zb_ping_set_ping_event_cb(benchmark_ping_evt_handler);
 
-    // ZB_AF_SET_ENDPOINT_HANDLER(zb_cli_get_endpoint(), zigbee_bm_ep_handler);
-
     k_thread_create(&benchmark_thread, benchmark_thread_stack,
                     BENCHMARK_THREAD_STACK_SIZE, benchmark_thread_loop,
                     NULL, NULL, NULL, BENCHMARK_THREAD_PRIO,
                     BENCHMARK_THREAD_OPTS, K_NO_WAIT);
+
+    k_thread_name_set((k_tid_t)&benchmark_thread, BENCHMARK_THREAD_NAME);
 
     LOG_INF("Benchmark component has been initialized");
 }
@@ -878,7 +879,7 @@ void benchmark_process(void)
 
         case TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER:
             // Retry sending the next buffer.
-            LOG_DBG("TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER state");
+            LOG_INF("TEST_IN_PROGRESS_WAITING_FOR_TX_BUFFER state");
             zigbee_benchmark_send_ping_req();
             break;
 

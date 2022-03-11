@@ -446,6 +446,38 @@ static void dump_result(benchmark_result_t * p_result)
             p_result->mac_tx_counters.total);
 }
 
+#if CONFIG_THREAD_RUNTIME_STATS
+
+static void foreach_callback(const struct k_thread *thread, void *user_data)
+{
+	k_thread_runtime_stats_t stats;
+    uint32_t all_ticks = k_cycle_get_32();
+	int ret;
+
+	k_thread_runtime_stats_get((k_tid_t)thread, &stats);
+	((k_thread_runtime_stats_t *)user_data)->execution_cycles +=
+		stats.execution_cycles;
+
+    printk("Thread: \"%s\" used %llu (%f.2\%)\n", k_thread_name_get((k_tid_t)thread),
+                                                stats.execution_cycles,
+                                                stats.execution_cycles*100.0/all_ticks);
+}
+
+static void test_thread_runtime_stats_get(void)
+{
+	k_thread_runtime_stats_t stats, stats_all;
+	int ret;
+
+	stats.execution_cycles = 0;
+	k_thread_foreach(foreach_callback, &stats);
+
+	/* Check NULL parameters */
+	ret = k_thread_runtime_stats_all_get(NULL);
+
+	k_thread_runtime_stats_all_get(&stats_all);
+}
+
+#endif
 
 /** Test execution commands */
 static void print_test_results(benchmark_event_context_t * p_context)
@@ -611,6 +643,10 @@ static void print_test_results(benchmark_event_context_t * p_context)
             dump_result(p_results->p_remote_result);
         }
     }
+
+#if CONFIG_THREAD_RUNTIME_STATS
+    test_thread_runtime_stats_get();
+#endif
 
     log_buffer_flush(&results_log_buf);
 }
