@@ -498,21 +498,9 @@ static void print_test_results(benchmark_event_context_t * p_context)
         uint32_t packets_acked                            = packets_sent - p_results->p_local_status->acks_lost;
         uint32_t txed_bytes                               = m_test_configuration.length * packets_sent;
         uint32_t acked_bytes                              = m_test_configuration.length * packets_acked;
-        uint32_t txed_bits                                = m_test_configuration.length * packets_sent * 8;
-        uint32_t throughput                               = (uint32_t)(txed_bits / test_duration);
-        uint32_t throughput_rtx                           = (uint32_t)((acked_bytes * 1000ULL) / (test_duration * 128ULL));
-        uint32_t latency_sum                              = (uint32_t)p_results->p_local_status->latency.sum*2;
+        uint32_t throughput                               = (uint32_t)((txed_bytes*8) / (test_duration));
+        uint32_t throughput_rtx                           = (uint32_t)((acked_bytes*8) / (test_duration));
 
-        char throughput_str[60] = "";
-        char throughput_rtx_str[60] = "";
-
-        if (latency_sum > 0) {
-            parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
-            parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
-        } else {
-            parse_decimal(throughput_str, "    Throughput", "kbps", txed_bits * DECIMAL_PRECISION / test_duration);
-            parse_decimal(throughput_rtx_str, "    Throughput", "kbps", acked_bytes * DECIMAL_PRECISION * 1000ULL / (test_duration * 128ULL));
-        }
         (void)log_buffer_has_space(&results_log_buf, 100, true);
         results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                            "\r\nPackets sent: %u\r\nPackets acked: %u\r\nBytes sent: %u\r\nBytes acked: %u"
@@ -547,7 +535,7 @@ static void print_test_results(benchmark_event_context_t * p_context)
             (void)log_buffer_has_space(&results_log_buf, 40, true);
             results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                                "\r\nUnidirectional:"
-                               "\r\n%s", throughput_str);
+                               "\r\n    Throughput: %lukbps", throughput);
         }
         else
         {
@@ -562,13 +550,13 @@ static void print_test_results(benchmark_event_context_t * p_context)
             parse_decimal(per_str[0], "    PER", "%", per);
             parse_decimal(per_str[1], "    PER", "%", 0);
 
-            (void)log_buffer_has_space(&results_log_buf, 100, true);
+            (void)log_buffer_has_space(&results_log_buf, 150, true);
             results_log_buf.buf_usage += sprintf(results_log_buf.buf + results_log_buf.buf_usage,
                                                  "\r\nWithout retransmissions:"
-                                                 "\r\n%s" "\r\n%s"
+                                                 "\r\n%s" "\r\n    Throughput: %lukbps"
                                                  "\r\nWith retransmissions:"
-                                                 "\r\n%s" "\r\n%s",
-                                                 per_str[0], throughput_str, per_str[1], throughput_rtx_str);
+                                                 "\r\n%s" "\r\n    Throughput: %lukbps",
+                                                 per_str[0], throughput, per_str[1], throughput_rtx);
         }
 
         if (m_test_configuration.mode == BENCHMARK_MODE_UNIDIRECTIONAL)
