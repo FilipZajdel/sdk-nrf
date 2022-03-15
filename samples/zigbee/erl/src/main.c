@@ -123,66 +123,16 @@ ZBOSS_DECLARE_DEVICE_CTX_2_EP(
 	app_template_ep);
 
 
-/**@brief Function for initializing all clusters attributes. */
-static void app_clusters_attr_init(void)
-{
-
-}
-
-
-// static void update_attrs(zb_uint8_t _)
-// {
-// 	ZVUNUSED(_);
-// 	zb_zcl_reporting_info_t *erl_reporting_info;
-// 	zb_char_t erl_pod_buf[16] = "";
-// 	static zb_uint8_t erl_pod_idx;
-
-// 	// Get a new Point Of Delivery
-//     switch ((erl_pod_idx++) % 4)
-//     {
-//         case 0:
-//             sprintf(erl_pod_buf, "abcdeabcdefg\0");
-//             break;
-//         case 1:
-//             sprintf(erl_pod_buf, "abcdeabcdef\0");
-//             break;
-//         case 2:
-//             sprintf(erl_pod_buf, "abcdeabcde\0");
-//             break;
-//         case 3:
-//             sprintf(erl_pod_buf, "Dabcdefghi001\0");
-//             break;
-//     }
-
-//     ZB_ZCL_STRING_CLEAR(erl_data.meter_identification_attrs.pod);
-//     ZB_ZCL_STRING_APPEND_C_STR(erl_data.meter_identification_attrs.pod, 16, erl_pod_buf);
-
-// 	erl_reporting_info = zb_zcl_find_reporting_info(ERL_ENDPOINT,
-//                                                     ZB_ZCL_CLUSTER_ID_METER_IDENTIFICATION,
-//                                                     ZB_ZCL_CLUSTER_SERVER_ROLE,
-//                                                     ZB_ZCl_ATTR_METER_IDENTIFICATION_POD);
-//     if (erl_reporting_info)
-//     {
-//         ZB_ZCL_SET_REPORTING_FLAG(erl_reporting_info, ZB_ZCL_REPORT_ATTR);
-//     }
-//     else
-//     {
-//         LOG_INF("Could not obtain reporting info for ERL");
-//     }
-
-// 	ZB_SCHEDULE_APP_ALARM(update_attrs, 0, ERL_ATTRIBUTE_REPORT_INTERVAL);
-// }
-
+#define ERL_POD_STR_MAX_LEN (16)
 
 static void update_attrs(zb_uint8_t _)
 {
 	ZVUNUSED(_);
-	zb_char_t erl_pod_buf[16] = "";
-	zb_char_t erl_buf[16] = "";
+	zb_char_t erl_pod_buf[ERL_POD_STR_MAX_LEN] = "";
+	zb_char_t erl_buf[ERL_POD_STR_MAX_LEN] = "";
 	static zb_uint8_t erl_pod_idx;
 
-	// Get a new Point Of Delivery
-    switch ((erl_pod_idx++) % 5)
+    switch ((erl_pod_idx++) % 6)
     {
         case 0:
             sprintf(erl_pod_buf, "twelve-chars");
@@ -196,13 +146,16 @@ static void update_attrs(zb_uint8_t _)
         case 3:
             sprintf(erl_pod_buf, "eightchr");
             break;
-		case 4:
-			sprintf(erl_pod_buf, "sixchr");
-			break;
+        case 4:
+            sprintf(erl_pod_buf, "sixchr");
+            break;
+        case 5:
+            sprintf(erl_pod_buf, "sixteencharactr");
+            break;
     }
 
 	ZB_ZCL_STRING_CLEAR(erl_buf);
-    ZB_ZCL_STRING_APPEND_C_STR(erl_buf, 16, erl_pod_buf);
+    ZB_ZCL_STRING_APPEND_C_STR(erl_buf, ERL_POD_STR_MAX_LEN, erl_pod_buf);
 
 	zb_zcl_set_attr_val(
 		ERL_ENDPOINT,
@@ -323,8 +276,6 @@ void main(void)
 
 	/* Register device context (endpoints). */
 	ZB_AF_REGISTER_DEVICE_CTX(&app_template_ctx);
-
-	app_clusters_attr_init();
 
 	/* Register handlers to identify notifications */
 	ZB_AF_SET_IDENTIFY_NOTIFICATION_HANDLER(ERL_ENDPOINT, identify_cb);
