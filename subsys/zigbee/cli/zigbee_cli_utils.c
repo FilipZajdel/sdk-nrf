@@ -19,8 +19,12 @@ extern zb_uint8_t cli_agent_ep_handler_attr(zb_bufid_t bufid);
 extern zb_uint8_t cli_agent_ep_handler_generic_cmd(zb_bufid_t bufid);
 extern zb_uint8_t cli_agent_ep_handler_report(zb_bufid_t bufid);
 extern zb_uint8_t cli_agent_ep_handler_ping(zb_bufid_t bufid);
+extern zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid);
 
 static zb_device_handler_t zb_ep_handlers[] = {
+#if defined(CONFIG_BENCHMARK_ZIGBEE)
+	zigbee_benchmark_ep_handler,
+#endif
 	cli_agent_ep_handler_attr,
 	cli_agent_ep_handler_generic_cmd,
 	cli_agent_ep_handler_report,

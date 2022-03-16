@@ -86,4 +86,7 @@ struct ping_reply_data {
  */
 void zb_ping_set_ping_indication_cb(ping_time_cb_t cb);
 
+/**@brief Set ping event callback. */
+void zb_ping_set_ping_event_cb(ping_time_cb_t cb);
+
 #endif /* ZIGBEE_CLI_PING_TYPES_H__ */

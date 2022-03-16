@@ -21,10 +21,15 @@
 
 LOG_MODULE_REGISTER(zigbee_shell_ping, CONFIG_ZIGBEE_SHELL_LOG_LEVEL);
 
-static uint8_t ping_seq_num;
-static ping_time_cb_t ping_ind_cb;
 
 static zb_uint32_t get_request_duration(struct ctx_entry *req_data);
+static void ping_cli_evt_handler(enum ping_time_evt evt, zb_uint32_t delay_ms,
+				 struct ctx_entry *req_data);
+
+static uint8_t ping_seq_num;
+static ping_time_cb_t ping_ind_cb;
+static ping_time_cb_t ping_evt_cb = ping_cli_evt_handler;
+
 
 /**@brief Invalidate an entry with ping request data after the timeout.
  *        This function is called as the ZBOSS callback.
@@ -333,6 +338,13 @@ static void ping_cli_evt_handler(enum ping_time_evt evt, zb_uint32_t delay_ms,
 void zb_ping_set_ping_indication_cb(ping_time_cb_t cb)
 {
 	ping_ind_cb = cb;
+}
+
+void zb_ping_set_ping_event_cb(ping_time_cb_t cb)
+{
+	if (cb != NULL) {
+		ping_evt_cb = cb;
+	}
 }
 
 /**@brief Actually construct the Ping Request frame and send it.
@@ -772,7 +784,7 @@ int cmd_zb_ping(const struct shell *shell, size_t argc, char **argv)
 		return -ENOEXEC;
 	}
 
-	ping_entry->ping_req_data.cb = ping_cli_evt_handler;
+	ping_entry->ping_req_data.cb = ping_evt_cb;
 	ping_entry->ping_req_data.request_ack = 0;
 	ping_entry->ping_req_data.request_echo = 1;
 	ping_entry->ping_req_data.timeout_ms =
@@ -809,6 +821,45 @@ int cmd_zb_ping(const struct shell *shell, size_t argc, char **argv)
 	}
 
 	if (ping_entry->ping_req_data.count > PING_MAX_LENGTH) {
+		shell_print(shell, "Note: Ping payload size"
+							"exceeds maximum possible,"
+							"assuming maximum");
+		ping_entry->ping_req_data.count = PING_MAX_LENGTH;
+	}
+
+	/* Put the shell instance to be used later. */
+	ping_entry->shell = shell;
+
+	ping_request_send(ping_entry);
+	return 0;
+}
+
+int cmd_zb_ping_generic(const struct shell *shell, struct ping_req_data *ping_req_data)
+{
+	struct ctx_entry *ping_entry =
+		ctx_mgr_new_entry(CTX_MGR_PING_REQ_ENTRY_TYPE);
+
+	if (!ping_entry || !ping_req_data) {
+		zb_cli_print_error(shell, "Couldn't get free entry to store data",
+				   ZB_FALSE);
+		return -ENOEXEC;
+	}
+
+	ping_entry->ping_req_data.cb = ping_evt_cb;
+	ping_entry->ping_req_data.request_ack = ping_req_data->request_ack;
+	ping_entry->ping_req_data.request_echo = ping_req_data->request_echo;
+	ping_entry->ping_req_data.timeout_ms = PING_ECHO_REQUEST_TIMEOUT_S * MSEC_PER_SEC;
+	ping_entry->ping_req_data.count = ping_req_data->count;
+	ping_entry->ping_req_data.packet_info = ping_req_data->packet_info;
+
+	if (ping_entry->ping_req_data.packet_info.dst_addr_mode ==
+	    ADDR_INVALID) {
+		zb_cli_print_error(shell, "Wrong address format", ZB_FALSE);
+		ctx_mgr_delete_entry(ping_entry);
+		return -EINVAL;
+	}
+
+	if (ping_req_data->count > PING_MAX_LENGTH) {
 		shell_print(shell, "Note: Ping payload size"
 							"exceeds maximum possible,"
 							"assuming maximum");
