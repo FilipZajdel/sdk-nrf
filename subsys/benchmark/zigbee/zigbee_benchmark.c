@@ -338,8 +338,6 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
 {
     struct ping_req_data *p_request = &entry->ping_req_data;
 
-    // LOG_DBG("Benchmark ping evt handler!! state %u", evt);
-
     switch (evt)
     {
         case PING_EVT_FRAME_SENT:
@@ -652,6 +650,22 @@ void zigbee_benchmark_command_response_handler(zigbee_benchmark_ctrl_t cmd_id, z
                 m_benchmark_evt.evt = BENCHMARK_TEST_COMPLETED;
                 break;
 
+            case TEST_SET_TX_POWER:
+                LOG_INF("Setting remote peer's tx power failed. Error: %d", status);
+                break;
+
+            case TEST_GET_TX_POWER:
+                LOG_INF("Failed to get remote peer's tx power. Error: %d", status);
+                break;
+
+            case TEST_TX_POWER_RESPONSE:
+                LOG_INF("Received a faulty TX POWER RESPONSE from a remote peer. Error: %d", status);
+                break;
+
+            case TEST_OPEN_NETWORK_REQUEST:
+                LOG_INF("Remote peer could not open the network."
+                        "Make sure that the request was sent to network coordinator, Error: %d", status);
+
             default:
                 LOG_INF("Unsupported remote benchmark command response received. Command: %d", cmd_id);
                 m_benchmark_evt.context.error = ZB_ZCL_STATUS_SUCCESS;
@@ -679,6 +693,14 @@ void zigbee_benchmark_command_response_handler(zigbee_benchmark_ctrl_t cmd_id, z
             zigbee_benchmark_test_stop_master();
             break;
 
+        case TEST_SET_TX_POWER:
+            LOG_INF("Successfully set tx power of a remote peer.");
+            break;
+
+        case TEST_OPEN_NETWORK_REQUEST:
+            LOG_INF("Successfully opened the network to join.");
+            break;
+
         default:
             LOG_INF("Unsupported remote benchmark command response received: %d", cmd_id);
             break;
@@ -697,7 +719,7 @@ static void benchmark_thread_loop(void *p1, void *p2, void *p3)
     while (true)
     {
         benchmark_process();
-        k_usleep(10);
+        k_usleep(20);
     }
 }
 
