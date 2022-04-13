@@ -1,3 +1,5 @@
+/*$$$LICENCE_NORDIC_STANDARD<2022>$$$*/
+
 #include "benchmark_api.h"
 #include "benchmark_zigbee_common.h"
 #include "zboss_api.h"
@@ -153,7 +155,7 @@ zb_uint8_t zigbee_benchmark_ep_handler(zb_bufid_t bufid)
                 LOG_INF("Remote peer 0x%04x requested to open the network", remote_short_addr);
                 zb_zcl_status = ZB_ZCL_STATUS_SUCCESS;
 
-		        if (bdb_start_top_level_commissioning(ZB_BDB_NETWORK_STEERING)) {
+                if (bdb_start_top_level_commissioning(ZB_BDB_NETWORK_STEERING)) {
                     LOG_INF("Opened the network for joining");
                 } else {
                     LOG_INF("Commissioning hasn't finished yet!");
