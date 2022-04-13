@@ -79,30 +79,10 @@ static void mac_counters_read(benchmark_mac_counters_t * p_mac_tx_counters)
 #if defined ZIGBEE_NRF_RADIO_STATISTICS
     zigbee_nrf_radio_stats_t * p_stats = zigbee_get_nrf_radio_stats();
 
-    // LOG_DBG("Radio RX statistics:");
-    // LOG_DBG("\trx_successful: %ld", p_stats->rx_successful);
-    // LOG_DBG("\trx_err_none: %ld", p_stats->rx_err_none);
-    // LOG_DBG("\trx_err_invalid_frame: %ld", p_stats->rx_err_invalid_frame);
-    // LOG_DBG("\trx_err_invalid_fcs: %ld", p_stats->rx_err_invalid_fcs);
-    // LOG_DBG("\trx_err_invalid_dest_addr: %ld", p_stats->rx_err_invalid_dest_addr);
-    // LOG_DBG("\trx_err_runtime: %ld", p_stats->rx_err_runtime);
-    // LOG_DBG("\trx_err_timeslot_ended: %ld", p_stats->rx_err_timeslot_ended);
-    // LOG_DBG("\trx_err_aborted: %ld\r\n", p_stats->rx_err_aborted);
-
-    // LOG_DBG("Radio TX statistics:");
-    // LOG_DBG("\ttx_successful: %d", p_stats->tx_successful);
-    // LOG_DBG("\ttx_err_none: %d", p_stats->tx_err_none);
-    // LOG_DBG("\ttx_err_busy_channel: %d", p_stats->tx_err_busy_channel);
-    // LOG_DBG("\ttx_err_invalid_ack: %d", p_stats->tx_err_invalid_ack);
-    // LOG_DBG("\ttx_err_no_mem: %d", p_stats->tx_err_no_mem);
-    // LOG_DBG("\ttx_err_timeslot_ended: %d", p_stats->tx_err_timeslot_ended);
-    // LOG_DBG("\ttx_err_no_ack: %d", p_stats->tx_err_no_ack);
-    // LOG_DBG("\ttx_err_aborted: %d", p_stats->tx_err_aborted);
-    // LOG_DBG("\ttx_err_timeslot_denied: %d", p_stats->tx_err_timeslot_denied);
-
     p_mac_tx_counters->error = p_stats->tx_err_busy_channel + p_stats->tx_err_no_mem
                                + p_stats->tx_err_invalid_ack + p_stats->tx_err_no_ack
-                               + p_stats->tx_err_aborted + p_stats->tx_err_timeslot_ended + p_stats->tx_err_timeslot_denied;
+                               + p_stats->tx_err_aborted + p_stats->tx_err_timeslot_ended
+                               + p_stats->tx_err_timeslot_denied;
     p_mac_tx_counters->total = p_stats->tx_successful + p_mac_tx_counters->error;
 
 #else /* ZIGBEE_NRF_RADIO_STATISTICS */
@@ -137,7 +117,6 @@ static void result_clear(void)
 {
     memset(&m_local_result, 0, sizeof(m_local_result));
     memset(&m_remote_result, 0, sizeof(m_remote_result));
-    cpu_utilization_clear();
     benchmark_clear_latency(&m_test_status.latency);
     mac_counters_clear();
 
@@ -424,7 +403,6 @@ static void benchmark_ping_evt_handler(enum ping_time_evt evt, zb_uint32_t delay
             if (m_test_status.reset_counters)
             {
                 // First packet in slave mode received.
-                cpu_utilization_clear();
                 // Reset MAC-level TX counters in order to ignore initial control message response.
                 mac_counters_clear();
                 m_test_status.reset_counters = false;
@@ -510,8 +488,6 @@ static void zigbee_benchmark_test_start_master(void)
     result_clear();
     // Ignore APS ACK transmission for the TEST_START_REQUEST command.
     m_local_result.mac_tx_counters.total++;
-
-    cpu_utilization_start();
     m_test_status.test_in_progress = true;
     m_start_time                   = timer_ticks_from_uptime();
 
@@ -537,7 +513,6 @@ static void zigbee_benchmark_test_stop_master(void)
         return;
     }
 
-    m_local_result.cpu_utilization = cpu_utilization_get();
     m_benchmark_evt.evt            = BENCHMARK_TEST_STOPPED;
     m_benchmark_evt.context.error  = benchmark_peer_results_request_send();
 
@@ -563,7 +538,6 @@ zb_zcl_status_t zigbee_benchmark_test_start_slave(void)
     m_start_time            = timer_ticks_from_uptime();
 
     result_clear();
-    cpu_utilization_start();
     m_test_status.test_in_progress = true;
     m_test_status.reset_counters   = true;
 
@@ -589,8 +563,6 @@ zb_zcl_status_t zigbee_benchmark_test_stop_slave(void)
     }
 
     mac_counters_calculate();
-    m_local_result.cpu_utilization = cpu_utilization_get();
-    cpu_utilization_stop();
     benchmark_test_duration_calculate();
     m_state = TEST_IDLE;
     m_test_status.test_in_progress = false;
@@ -817,7 +789,6 @@ uint32_t benchmark_test_stop(void)
     m_state = TEST_IDLE;
     benchmark_test_duration_calculate();
     mac_counters_calculate();
-    cpu_utilization_stop();
 
     if (m_test_status.test_in_progress)
     {
