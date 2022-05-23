@@ -241,6 +241,22 @@ static void udp_received(struct net_context *context,
 				      " rate:\t\t\t");
 			print_number(shell, rate_in_kbps, KBPS, KBPS_UNIT);
 			shell_fprintf(shell, SHELL_NORMAL, "\n");
+
+			shell_fprintf(shell, SHELL_NORMAL,
+				      " latency avg:\t\t\t");
+			print_number(shell, session->latency.sum / session->counter,
+				TIME_US, TIME_US_UNIT);
+			shell_fprintf(shell, SHELL_NORMAL, "\n");
+
+			shell_fprintf(shell, SHELL_NORMAL,
+				      " latency min:\t\t\t");
+			print_number(shell, session->latency.min, TIME_US, TIME_US_UNIT);
+			shell_fprintf(shell, SHELL_NORMAL, "\n");
+
+			shell_fprintf(shell, SHELL_NORMAL,
+				      " latency max:\t\t\t");
+			print_number(shell, session->latency.max, TIME_US, TIME_US_UNIT);
+			shell_fprintf(shell, SHELL_NORMAL, "\n");
 		} else {
 			/* Update counter */
 			session->counter++;
@@ -254,6 +270,8 @@ static void udp_received(struct net_context *context,
 			if (session->last_transit_time != 0) {
 				int32_t delta_transit = transit_time -
 					session->last_transit_time;
+				uint32_t latency = k_ticks_to_us_ceil32(time) -
+					k_ticks_to_us_ceil32(session->last_time);
 
 				delta_transit =
 					(delta_transit < 0) ?
@@ -261,9 +279,16 @@ static void udp_received(struct net_context *context,
 
 				session->jitter +=
 					(delta_transit - session->jitter) / 16;
+
+				session->latency.sum += latency;
+				session->latency.min = session->latency.min > latency ?
+					latency : session->latency.min;
+				session->latency.max = session->latency.max < latency ?
+					latency : session->latency.max;
 			}
 
 			session->last_transit_time = transit_time;
+			session->last_time = time;
 
 			/* Check header id */
 			if (id != session->next_id) {
