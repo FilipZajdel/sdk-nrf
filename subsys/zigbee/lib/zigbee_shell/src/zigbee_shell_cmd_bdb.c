@@ -1178,6 +1178,25 @@ static int cmd_child_max(const struct shell *shell, size_t argc, char **argv)
 	zb_shell_print_done(shell, ZB_FALSE);
 	return 0;
 }
+
+static int cmd_key_switch(const struct shell *shell, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	if (!ZB_JOINED()) {
+		zb_shell_print_error(shell, "Can not execute command", ZB_FALSE);
+		return -ENOEXEC;
+	}
+
+	if (ZB_SCHEDULE_APP_CALLBACK(zb_secur_nwk_key_switch_procedure, 0)) {
+		zb_shell_print_error(shell, "Can not execute command", ZB_FALSE);
+		return -ENOEXEC;
+	}
+
+
+	zb_shell_print_done(shell, ZB_FALSE);
+}
 #endif
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_ic,
