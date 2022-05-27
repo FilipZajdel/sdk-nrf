@@ -33,11 +33,6 @@ enum session_proto {
 	SESSION_PROTO_END
 };
 
-struct session_latency {
-	uint32_t min;
-	uint32_t max;
-	uint32_t sum;
-};
 
 struct session {
 	/* Tuple for UDP */
@@ -59,7 +54,7 @@ struct session {
 	uint32_t last_time;
 	int32_t jitter;
 	int32_t last_transit_time;
-	struct session_latency latency;
+	struct rtt_stats rtt;
 
 	/* Stats packet*/
 	struct zperf_server_hdr stat;

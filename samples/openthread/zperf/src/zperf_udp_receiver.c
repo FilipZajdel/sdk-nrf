@@ -75,6 +75,28 @@ static inline void build_reply(struct zperf_udp_datagram *hdr,
 	stat_hdr->jitter2 = htonl(stat->jitter2);
 }
 
+static inline void build_echo_reply(struct zperf_udp_datagram *hdr, uint8_t *buf)
+{
+	int pos = 0;
+	struct zperf_server_hdr *stat_hdr;
+
+	memcpy(&buf[pos], hdr, sizeof(struct zperf_udp_datagram));
+	pos += sizeof(struct zperf_udp_datagram);
+
+	stat_hdr = (struct zperf_server_hdr *)&buf[pos];
+
+	stat_hdr->flags =        htonl(0xFADE);
+	stat_hdr->total_len1 =   htonl(0xFADE);
+	stat_hdr->total_len2 =   htonl(0xFADE);
+	stat_hdr->stop_sec =     htonl(0xFADE);
+	stat_hdr->stop_usec =    htonl(0xFADE);
+	stat_hdr->error_cnt =    htonl(0xFADE);
+	stat_hdr->outorder_cnt = htonl(0xFADE);
+	stat_hdr->datagrams =  	 htonl(0xFADE);
+	stat_hdr->jitter1 =    	 htonl(0xFADE);
+	stat_hdr->jitter2 =    	 htonl(0xFADE);
+}
+
 /* Send statistics to the remote client */
 #define BUF_SIZE sizeof(struct zperf_udp_datagram) +	\
 	sizeof(struct zperf_server_hdr)
@@ -112,6 +134,34 @@ static int zperf_receiver_send_stat(const struct shell *shell,
 	return ret;
 }
 
+static void udp_send_echo(const struct shell *shell,
+				    struct net_context *context,
+				    struct net_pkt *pkt,
+				    union net_ip_header *ip_hdr,
+				    struct net_udp_hdr *udp_hdr,
+				    struct zperf_udp_datagram *hdr,
+				    struct zperf_server_hdr *stat)
+{
+	uint8_t reply[BUF_SIZE];
+	struct sockaddr dst_addr;
+	int ret;
+
+	set_dst_addr(shell, net_pkt_family(pkt),
+		     pkt, ip_hdr, udp_hdr, &dst_addr);
+
+	build_echo_reply(hdr, reply);
+
+	ret = net_context_sendto(context, reply, BUF_SIZE, &dst_addr,
+				 net_pkt_family(pkt) == AF_INET6 ?
+				 sizeof(struct sockaddr_in6) :
+				 sizeof(struct sockaddr_in),
+				 NULL, K_NO_WAIT, NULL);
+	if (ret < 0) {
+		shell_fprintf(shell, SHELL_WARNING,
+			      " Cannot send data to peer (%d)", ret);
+	}
+}
+
 static void udp_received(struct net_context *context,
 			 struct net_pkt *pkt,
 			 union net_ip_header *ip_hdr,
@@ -120,9 +170,12 @@ static void udp_received(struct net_context *context,
 			 void *user_data)
 {
 	NET_PKT_DATA_ACCESS_DEFINE(zperf, struct zperf_udp_datagram);
+	NET_PKT_DATA_ACCESS_DEFINE(zperf_client, struct zperf_client_hdr_v1);
 	struct net_udp_hdr *udp_hdr = proto_hdr->udp;
 	const struct shell *shell = user_data;
+	bool echo = false;
 	struct zperf_udp_datagram *hdr;
+	struct zperf_client_hdr_v1 *client_hdr;
 	struct session *session;
 	int32_t transit_time;
 	int64_t time;
@@ -137,6 +190,13 @@ static void udp_received(struct net_context *context,
 		shell_fprintf(shell, SHELL_WARNING,
 			      "Short iperf packet!\n");
 		goto out;
+	}
+
+	net_pkt_acknowledge_data(pkt, &zperf);
+	client_hdr = (struct zperf_client_hdr_v1 *)
+		net_pkt_get_data(pkt, &zperf_client);
+	if (client_hdr) {
+		echo = !!(client_hdr->flags & ZPERF_ECHO_FLAG);
 	}
 
 	time = k_uptime_ticks();
@@ -243,19 +303,19 @@ static void udp_received(struct net_context *context,
 			shell_fprintf(shell, SHELL_NORMAL, "\n");
 
 			shell_fprintf(shell, SHELL_NORMAL,
-				      " latency avg:\t\t\t");
-			print_number(shell, session->latency.sum / session->counter,
+				      " rtt avg:\t\t\t");
+			print_number(shell, session->rtt.sum / session->counter,
 				TIME_US, TIME_US_UNIT);
 			shell_fprintf(shell, SHELL_NORMAL, "\n");
 
 			shell_fprintf(shell, SHELL_NORMAL,
-				      " latency min:\t\t\t");
-			print_number(shell, session->latency.min, TIME_US, TIME_US_UNIT);
+				      " rtt min:\t\t\t");
+			print_number(shell, session->rtt.min, TIME_US, TIME_US_UNIT);
 			shell_fprintf(shell, SHELL_NORMAL, "\n");
 
 			shell_fprintf(shell, SHELL_NORMAL,
-				      " latency max:\t\t\t");
-			print_number(shell, session->latency.max, TIME_US, TIME_US_UNIT);
+				      " rtt max:\t\t\t");
+			print_number(shell, session->rtt.max, TIME_US, TIME_US_UNIT);
 			shell_fprintf(shell, SHELL_NORMAL, "\n");
 		} else {
 			/* Update counter */
@@ -270,7 +330,7 @@ static void udp_received(struct net_context *context,
 			if (session->last_transit_time != 0) {
 				int32_t delta_transit = transit_time -
 					session->last_transit_time;
-				uint32_t latency = k_ticks_to_us_ceil32(time) -
+				uint32_t rtt = k_ticks_to_us_ceil32(time) -
 					k_ticks_to_us_ceil32(session->last_time);
 
 				delta_transit =
@@ -280,11 +340,11 @@ static void udp_received(struct net_context *context,
 				session->jitter +=
 					(delta_transit - session->jitter) / 16;
 
-				session->latency.sum += latency;
-				session->latency.min = session->latency.min > latency ?
-					latency : session->latency.min;
-				session->latency.max = session->latency.max < latency ?
-					latency : session->latency.max;
+				session->rtt.sum += rtt;
+				session->rtt.min = session->rtt.min > rtt ?
+					rtt : session->rtt.min;
+				session->rtt.max = session->rtt.max < rtt ?
+					rtt : session->rtt.max;
 			}
 
 			session->last_transit_time = transit_time;
@@ -300,6 +360,12 @@ static void udp_received(struct net_context *context,
 				}
 			} else {
 				session->next_id++;
+			}
+
+			if (echo) {
+				udp_send_echo(shell, context, pkt,
+						      ip_hdr, udp_hdr, hdr,
+						      &session->stat);
 			}
 		}
 		break;

@@ -8,6 +8,18 @@
 
 #define VERSION "1.1"
 
+struct rtt_stats
+{
+	uint32_t min;
+	uint32_t max;
+	uint32_t sum;
+};
+
+struct echo_stats {
+	struct rtt_stats rtt;
+	uint32_t echo_cnt;
+};
+
 struct zperf_results {
 	uint32_t nb_packets_sent;
 	uint32_t nb_packets_rcvd;
@@ -19,6 +31,7 @@ struct zperf_results {
 	uint32_t client_time_in_us;
 	uint32_t packet_size;
 	uint32_t nb_packets_errors;
+	struct echo_stats echo_stats;
 };
 
 typedef void (*zperf_callback)(int status, struct zperf_results *);

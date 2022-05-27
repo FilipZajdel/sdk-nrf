@@ -157,6 +157,40 @@ static inline void zperf_upload_fin(const struct shell *shell,
 	}
 }
 
+static void echo_received(struct net_context *context,
+			  struct net_pkt *pkt,
+			  union net_ip_header *ip_hdr,
+			  union net_proto_header *proto_hdr,
+			  int status,
+			  void *user_data)
+{
+	NET_PKT_DATA_ACCESS_DEFINE(zperf_udp, struct zperf_udp_datagram);
+	struct echo_context *echo_ctx = (struct echo_context *)user_data;
+	struct zperf_udp_datagram *udp_hdr;
+	int64_t rtt;
+
+	udp_hdr = (struct zperf_udp_datagram *)
+		net_pkt_get_data(pkt, &zperf_udp);
+	if (!udp_hdr) {
+		LOG_WRN("Network packet too short\n");
+		return;
+	}
+
+	if (echo_ctx->id_to_ack != udp_hdr->id) {
+		LOG_ERR("Echo with unproper id received");
+		return;
+	}
+
+	rtt = k_uptime_ticks() - echo_ctx->send_time;
+	echo_ctx->echo_stats->rtt.sum += rtt;
+	echo_ctx->echo_stats->rtt.min = (rtt < echo_ctx->echo_stats->rtt.min) ?
+									rtt : echo_ctx->echo_stats->rtt.min;
+	echo_ctx->echo_stats->rtt.max = (rtt > echo_ctx->echo_stats->rtt.max) ?
+									rtt : echo_ctx->echo_stats->rtt.max;
+
+	net_pkt_acknowledge_data(pkt, &zperf_udp);
+}
+
 void zperf_udp_upload(const struct shell *shell,
 		      struct net_context *context,
 		      int port,
@@ -174,6 +208,11 @@ void zperf_udp_upload(const struct shell *shell,
 	int64_t start_time, end_time;
 	int64_t last_print_time, last_loop_time;
 	int64_t remaining, print_info;
+	struct echo_context echo_ctx = {.echo_stats = &results->echo_stats};
+
+	echo_ctx.echo_stats->rtt.sum = 0U;
+	echo_ctx.echo_stats->rtt.max = 0U;
+	echo_ctx.echo_stats->rtt.min = -1U;
 
 	if (packet_size > PACKET_SIZE_MAX) {
 		shell_fprintf(shell, SHELL_WARNING,
@@ -248,7 +287,7 @@ void zperf_udp_upload(const struct shell *shell,
 
 		hdr = (struct zperf_client_hdr_v1 *)(sample_packet +
 						     sizeof(*datagram));
-		hdr->flags = 0;
+		hdr->flags = zperf_echo_mode_enabled() ? ZPERF_ECHO_FLAG : 0U;
 		hdr->num_of_threads = htonl(1);
 		hdr->port = htonl(port);
 		hdr->buffer_len = sizeof(sample_packet) -
@@ -256,6 +295,8 @@ void zperf_udp_upload(const struct shell *shell,
 		hdr->bandwidth = htonl(rate_in_kbps);
 		hdr->num_of_bytes = htonl(packet_size);
 
+		echo_ctx.id_to_ack = nb_packets;
+		echo_ctx.send_time = k_uptime_ticks();
 		/* Send the packet */
 		ret = net_context_send(context, sample_packet, packet_size,
 				       NULL, K_NO_WAIT, NULL);
@@ -266,6 +307,16 @@ void zperf_udp_upload(const struct shell *shell,
 			break;
 		} else {
 			nb_packets++;
+		}
+
+		if (zperf_echo_mode_enabled()) {
+			int ret = net_context_recv(context, echo_received,
+							 K_MSEC(ZPERF_ECHO_TIMEOUT_MS),
+							 &echo_ctx);
+			if (ret == -ETIMEDOUT) {
+				LOG_ERR("didn't receive an echo");
+			}
+
 		}
 
 		/* Print log every seconds */

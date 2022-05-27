@@ -20,6 +20,7 @@ LOG_MODULE_DECLARE(net_zperf_sample, LOG_LEVEL_DBG);
 #include "zperf_internal.h"
 
 static char sample_packet[PACKET_SIZE_MAX];
+static bool echo_enabled;
 
 void zperf_tcp_upload(const struct shell *shell,
 		      struct net_context *ctx,
@@ -113,4 +114,14 @@ void zperf_tcp_upload(const struct shell *shell,
 	}
 
 	net_context_put(ctx);
+}
+
+bool zperf_echo_mode_enabled(void)
+{
+	return echo_enabled;
+}
+
+void zperf_echo_switch(bool enabled)
+{
+	echo_enabled = enabled;
 }

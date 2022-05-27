@@ -36,6 +36,8 @@
 #endif
 
 #define PACKET_SIZE_MAX      1024
+#define ZPERF_ECHO_FLAG      (1U<<0)
+#define ZPERF_ECHO_TIMEOUT_MS (100)
 
 struct zperf_udp_datagram {
 	int32_t id;
@@ -63,6 +65,12 @@ struct zperf_server_hdr {
 	int32_t datagrams;
 	int32_t jitter1;
 	int32_t jitter2;
+};
+
+struct echo_context {
+    int64_t send_time;
+    int32_t id_to_ack;
+    struct echo_stats *echo_stats;
 };
 
 static inline uint32_t time_delta(uint32_t ts, uint32_t t)
@@ -95,6 +103,8 @@ extern void zperf_tcp_upload(const struct shell *shell,
 			     unsigned int duration_in_ms,
 			     unsigned int packet_size,
 			     struct zperf_results *results);
+extern bool zperf_echo_mode_enabled(void);
+extern void zperf_echo_switch(bool enabled);
 
 extern void connect_ap(char *ssid);
 

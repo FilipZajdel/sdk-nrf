@@ -155,9 +155,9 @@ void zperf_reset_session_stats(struct session *session)
 	session->error = 0U;
 	session->jitter = 0;
 	session->last_transit_time = 0;
-	session->latency.min = (uint32_t)-1;
-	session->latency.max = 0U;
-	session->latency.sum = 0U;
+	session->rtt.min = (uint32_t)-1;
+	session->rtt.max = 0U;
+	session->rtt.sum = 0U;
 }
 
 void zperf_session_init(void)
