@@ -415,6 +415,33 @@ static void shell_udp_upload_print_stats(const struct shell *shell,
 		shell_fprintf(shell, SHELL_NORMAL, "\t(");
 		print_number(shell, client_rate_in_kbps, KBPS, KBPS_UNIT);
 		shell_fprintf(shell, SHELL_NORMAL, ")\n");
+
+		if (zperf_echo_mode_enabled()) {
+			if (results->echo_stats.echo_cnt == 0) {
+				results->echo_stats.echo_cnt = 1;
+			}
+
+			shell_fprintf(shell, SHELL_NORMAL,
+					" %d packets acked\n", results->echo_stats.echo_cnt);
+
+			shell_fprintf(shell, SHELL_NORMAL,
+					" rtt avg:\t\t\t");
+			print_number(shell, results->echo_stats.rtt.sum / results->echo_stats.echo_cnt,
+				TIME_US, TIME_US_UNIT);
+			shell_fprintf(shell, SHELL_NORMAL, "\n");
+
+			shell_fprintf(shell, SHELL_NORMAL,
+				      " rtt min:\t\t\t");
+			print_number(shell, results->echo_stats.rtt.min, TIME_US, TIME_US_UNIT);
+			shell_fprintf(shell, SHELL_NORMAL, "\n");
+
+			shell_fprintf(shell, SHELL_NORMAL,
+				      " rtt max:\t\t\t");
+			print_number(shell, results->echo_stats.rtt.max, TIME_US, TIME_US_UNIT);
+			shell_fprintf(shell, SHELL_NORMAL, "\n");
+		} else {
+			shell_info(shell, "echo mode disabled\n");
+		}
 	}
 }
 
@@ -489,6 +516,9 @@ static int setup_contexts(const struct shell *shell,
 				      "Cannot get IPv4 network context (%d)\n",
 				      ret);
 			return -ENOEXEC;
+		} else if (ret == 0) {
+			shell_fprintf(shell, SHELL_WARNING,
+						 "Successfully got IPv4 net context\n");
 		}
 
 		ipv4->sin_port = htons(port);

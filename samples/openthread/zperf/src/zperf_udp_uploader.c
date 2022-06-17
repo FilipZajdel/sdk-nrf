@@ -172,23 +172,23 @@ static void echo_received(struct net_context *context,
 	udp_hdr = (struct zperf_udp_datagram *)
 		net_pkt_get_data(pkt, &zperf_udp);
 	if (!udp_hdr) {
-		LOG_WRN("Network packet too short\n");
-		return;
+		goto out;
 	}
 
 	if (echo_ctx->id_to_ack != udp_hdr->id) {
-		LOG_ERR("Echo with unproper id received");
-		return;
+		goto out;
 	}
 
 	rtt = k_uptime_ticks() - echo_ctx->send_time;
+	rtt = k_ticks_to_us_ceil32(rtt);
 	echo_ctx->echo_stats->rtt.sum += rtt;
 	echo_ctx->echo_stats->rtt.min = (rtt < echo_ctx->echo_stats->rtt.min) ?
 									rtt : echo_ctx->echo_stats->rtt.min;
 	echo_ctx->echo_stats->rtt.max = (rtt > echo_ctx->echo_stats->rtt.max) ?
 									rtt : echo_ctx->echo_stats->rtt.max;
-
-	net_pkt_acknowledge_data(pkt, &zperf_udp);
+	echo_ctx->echo_stats->echo_cnt++;
+out:
+	net_pkt_unref(pkt);
 }
 
 void zperf_udp_upload(const struct shell *shell,
@@ -213,6 +213,7 @@ void zperf_udp_upload(const struct shell *shell,
 	echo_ctx.echo_stats->rtt.sum = 0U;
 	echo_ctx.echo_stats->rtt.max = 0U;
 	echo_ctx.echo_stats->rtt.min = -1U;
+	echo_ctx.echo_stats->echo_cnt = 0;
 
 	if (packet_size > PACKET_SIZE_MAX) {
 		shell_fprintf(shell, SHELL_WARNING,
@@ -295,7 +296,7 @@ void zperf_udp_upload(const struct shell *shell,
 		hdr->bandwidth = htonl(rate_in_kbps);
 		hdr->num_of_bytes = htonl(packet_size);
 
-		echo_ctx.id_to_ack = nb_packets;
+		echo_ctx.id_to_ack = htonl(nb_packets);
 		echo_ctx.send_time = k_uptime_ticks();
 		/* Send the packet */
 		ret = net_context_send(context, sample_packet, packet_size,
@@ -316,7 +317,6 @@ void zperf_udp_upload(const struct shell *shell,
 			if (ret == -ETIMEDOUT) {
 				LOG_ERR("didn't receive an echo");
 			}
-
 		}
 
 		/* Print log every seconds */

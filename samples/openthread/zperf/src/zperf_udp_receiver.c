@@ -75,26 +75,12 @@ static inline void build_reply(struct zperf_udp_datagram *hdr,
 	stat_hdr->jitter2 = htonl(stat->jitter2);
 }
 
-static inline void build_echo_reply(struct zperf_udp_datagram *hdr, uint8_t *buf)
+static inline uint32_t build_echo_reply(struct zperf_udp_datagram *hdr,
+										uint8_t *buf)
 {
-	int pos = 0;
-	struct zperf_server_hdr *stat_hdr;
+	memcpy(buf, hdr, sizeof(struct zperf_udp_datagram));
 
-	memcpy(&buf[pos], hdr, sizeof(struct zperf_udp_datagram));
-	pos += sizeof(struct zperf_udp_datagram);
-
-	stat_hdr = (struct zperf_server_hdr *)&buf[pos];
-
-	stat_hdr->flags =        htonl(0xFADE);
-	stat_hdr->total_len1 =   htonl(0xFADE);
-	stat_hdr->total_len2 =   htonl(0xFADE);
-	stat_hdr->stop_sec =     htonl(0xFADE);
-	stat_hdr->stop_usec =    htonl(0xFADE);
-	stat_hdr->error_cnt =    htonl(0xFADE);
-	stat_hdr->outorder_cnt = htonl(0xFADE);
-	stat_hdr->datagrams =  	 htonl(0xFADE);
-	stat_hdr->jitter1 =    	 htonl(0xFADE);
-	stat_hdr->jitter2 =    	 htonl(0xFADE);
+	return sizeof(struct zperf_udp_datagram);
 }
 
 /* Send statistics to the remote client */
@@ -140,9 +126,9 @@ static void udp_send_echo(const struct shell *shell,
 				    union net_ip_header *ip_hdr,
 				    struct net_udp_hdr *udp_hdr,
 				    struct zperf_udp_datagram *hdr,
-				    struct zperf_server_hdr *stat)
+					int32_t data_len)
 {
-	uint8_t reply[BUF_SIZE];
+	uint8_t reply[BUF_SIZE*2];
 	struct sockaddr dst_addr;
 	int ret;
 
@@ -151,7 +137,7 @@ static void udp_send_echo(const struct shell *shell,
 
 	build_echo_reply(hdr, reply);
 
-	ret = net_context_sendto(context, reply, BUF_SIZE, &dst_addr,
+	ret = net_context_sendto(context, reply, data_len, &dst_addr,
 				 net_pkt_family(pkt) == AF_INET6 ?
 				 sizeof(struct sockaddr_in6) :
 				 sizeof(struct sockaddr_in),
@@ -189,6 +175,7 @@ static void udp_received(struct net_context *context,
 	if (!hdr) {
 		shell_fprintf(shell, SHELL_WARNING,
 			      "Short iperf packet!\n");
+		printk("Short iperf packet!!\n");
 		goto out;
 	}
 
@@ -197,6 +184,8 @@ static void udp_received(struct net_context *context,
 		net_pkt_get_data(pkt, &zperf_client);
 	if (client_hdr) {
 		echo = !!(client_hdr->flags & ZPERF_ECHO_FLAG);
+	} else {
+		printk("No zperf client header!!\n");
 	}
 
 	time = k_uptime_ticks();
@@ -365,7 +354,7 @@ static void udp_received(struct net_context *context,
 			if (echo) {
 				udp_send_echo(shell, context, pkt,
 						      ip_hdr, udp_hdr, hdr,
-						      &session->stat);
+							  ntohl(client_hdr->num_of_bytes));
 			}
 		}
 		break;
