@@ -165,7 +165,11 @@ static void udp_received(struct net_context *context,
 	struct session *session;
 	int32_t transit_time;
 	int64_t time;
+#if !CONFIG_ZPERF_HACKED
 	int32_t id;
+#else
+	int8_t id;
+#endif
 
 	if (!pkt) {
 		return;
@@ -175,7 +179,6 @@ static void udp_received(struct net_context *context,
 	if (!hdr) {
 		shell_fprintf(shell, SHELL_WARNING,
 			      "Short iperf packet!\n");
-		printk("Short iperf packet!!\n");
 		goto out;
 	}
 
@@ -197,7 +200,11 @@ static void udp_received(struct net_context *context,
 		goto out;
 	}
 
-	id = ntohl(hdr->id);
+	if (IS_ENABLED(CONFIG_ZPERF_HACKED)) {
+		id = hdr->id;
+	} else {
+		id = ntohl(hdr->id);
+	}
 
 	switch (session->state) {
 	case STATE_COMPLETED:
@@ -307,27 +314,12 @@ static void udp_received(struct net_context *context,
 			print_number(shell, session->rtt.max, TIME_US, TIME_US_UNIT);
 			shell_fprintf(shell, SHELL_NORMAL, "\n");
 		} else {
-			/* Update counter */
-			session->counter++;
-			session->length += net_pkt_remaining_data(pkt);
 
-			/* Compute jitter */
-			transit_time = time_delta(
-				k_ticks_to_us_ceil32(time),
-				ntohl(hdr->tv_sec) * USEC_PER_SEC +
-				ntohl(hdr->tv_usec));
-			if (session->last_transit_time != 0) {
-				int32_t delta_transit = transit_time -
-					session->last_transit_time;
+			/* Update session data */
+			if (session->counter != 0) {
+
 				uint32_t rtt = k_ticks_to_us_ceil32(time) -
 					k_ticks_to_us_ceil32(session->last_time);
-
-				delta_transit =
-					(delta_transit < 0) ?
-					-delta_transit : delta_transit;
-
-				session->jitter +=
-					(delta_transit - session->jitter) / 16;
 
 				session->rtt.sum += rtt;
 				session->rtt.min = session->rtt.min > rtt ?
@@ -336,7 +328,8 @@ static void udp_received(struct net_context *context,
 					rtt : session->rtt.max;
 			}
 
-			session->last_transit_time = transit_time;
+			session->counter++;
+			session->length += net_pkt_remaining_data(pkt);
 			session->last_time = time;
 
 			/* Check header id */
@@ -345,13 +338,16 @@ static void udp_received(struct net_context *context,
 					session->outorder++;
 				} else {
 					session->error += id - session->next_id;
-					session->next_id = id + 1;
+					session->next_id = zperf_get_next_packet_id(id);
 				}
 			} else {
-				session->next_id++;
+				session->next_id = zperf_get_next_packet_id(session->next_id);
 			}
 
 			if (echo) {
+				printk("(packet id: %u) (len: %u) (header size: %u)\n",
+					id, ntohs(udp_hdr->len) - sizeof(*udp_hdr), sizeof(*hdr));
+
 				udp_send_echo(shell, context, pkt,
 						      ip_hdr, udp_hdr, hdr,
 							  ntohl(client_hdr->num_of_bytes));

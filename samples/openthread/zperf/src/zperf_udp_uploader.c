@@ -92,8 +92,8 @@ static inline void zperf_upload_fin(const struct shell *shell,
 
 		/* Fill the packet header */
 		datagram->id = htonl(-nb_packets);
-		datagram->tv_sec = htonl(secs);
-		datagram->tv_usec = htonl(usecs);
+		// datagram->tv_sec = htonl(secs);
+		// datagram->tv_usec = htonl(usecs);
 
 		hdr = (struct zperf_client_hdr_v1 *)(sample_packet +
 						     sizeof(*datagram));
@@ -283,8 +283,8 @@ void zperf_udp_upload(const struct shell *shell,
 		datagram = (struct zperf_udp_datagram *)sample_packet;
 
 		datagram->id = htonl(nb_packets);
-		datagram->tv_sec = htonl(secs);
-		datagram->tv_usec = htonl(usecs);
+		// datagram->tv_sec = htonl(secs);
+		// datagram->tv_usec = htonl(usecs);
 
 		hdr = (struct zperf_client_hdr_v1 *)(sample_packet +
 						     sizeof(*datagram));
@@ -307,7 +307,7 @@ void zperf_udp_upload(const struct shell *shell,
 				      ret);
 			break;
 		} else {
-			nb_packets++;
+			nb_packets = zperf_get_next_packet_id(nb_packets);
 		}
 
 		if (zperf_echo_mode_enabled()) {

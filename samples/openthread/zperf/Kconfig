@@ -1,0 +1,22 @@
+# Private config options for zperf sample
+
+# Copyright (c) 2022 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Zperf application"
+
+config LOOPBACK_MODE
+	bool "Loopback LOOPBACK_MODE"
+	default y
+	help
+	  Set the controller to loopback mode.
+	  This allows testing without a second board.
+
+config ZPERF_HACKED
+    bool "Enable hacky UDP datagram header"
+    default n
+    help
+      While using sperf over UDP, utilize hacky
+      zperf datagram header.
+
+source "Kconfig.zephyr"

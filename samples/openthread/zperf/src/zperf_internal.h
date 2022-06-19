@@ -36,15 +36,37 @@
 #endif
 
 #define PACKET_SIZE_MAX      1024
-#define ZPERF_ECHO_FLAG      (1U<<0)
+#define ZPERF_ECHO_FLAG      (1U<<1)
+#define ZPERF_ACK_FLAG		 (1U<<0)
 #define ZPERF_ECHO_TIMEOUT_MS (100)
 
+#define ZPERF_CLIENT_HDR_V1_ID      (0U)
+#define ZPERF_SERVER_HDR_ID	        (1U)
+#define ZPERF_CLIENT_HDR_CONF_V1_ID (2U)
+#define ZPERF_SERVER_HDR_ACK_ID
+
+#if !CONFIG_ZPERF_HACKED
 struct zperf_udp_datagram {
 	int32_t id;
 	uint32_t tv_sec;
 	uint32_t tv_usec;
 } __packed;
 
+#else
+struct zperf_udp_datagram {
+	int8_t id;
+	struct flags {
+		uint8_t ack : 1;
+		uint8_t echo : 1;
+		uint8_t fin : 1;
+		uint8_t ack_req : 1;
+		uint8_t echo_req : 1;
+		uint8_t fin_req : 1;
+		uint8_t reserved_1 : 1;
+		uint8_t reserved_2 : 1;
+	} __packed flags;
+} __packed;
+#endif
 struct zperf_client_hdr_v1 {
 	int32_t flags;
 	int32_t num_of_threads;
@@ -65,6 +87,19 @@ struct zperf_server_hdr {
 	int32_t datagrams;
 	int32_t jitter1;
 	int32_t jitter2;
+};
+
+enum zperf_test_modes {
+	/* The client sends consecutive packets as fast as possible. */
+	ZPERF_MODE_UNIDIRECTIONAL = 0U,
+
+	/* The client sends consecutive packets as soon as previous are
+	   akcnowledged. */
+	ZPERF_MODE_ACK = 0x1U,
+
+	/* The server responds to the client with the data of the same length as
+	   received. */
+	ZPERF_MODE_ECHO = 0x2U
 };
 
 struct echo_context {
@@ -113,5 +148,8 @@ const struct in6_addr *zperf_get_default_if_in6_addr(void);
 
 void zperf_tcp_stopped(void);
 void zperf_tcp_started(void);
+
+uint32_t zperf_get_next_packet_id(uint32_t current_id);
+uint16_t zperf_get_udp_len(struct net_udp_hdr *udp_hdr);
 
 #endif /* __ZPERF_INTERNAL_H */

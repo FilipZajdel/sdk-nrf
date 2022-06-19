@@ -14,6 +14,7 @@ target_sources(app PRIVATE
   src/zperf_udp_uploader.c
   src/zperf_tcp_receiver.c
   src/zperf_tcp_uploader.c
+  src/zperf_internal_utils.c
   )
 
 target_include_directories(app PRIVATE
