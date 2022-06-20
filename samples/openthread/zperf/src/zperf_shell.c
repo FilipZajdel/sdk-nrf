@@ -1158,6 +1158,28 @@ static int cmd_udp_echo(const struct shell *shell, int argc, char *argv[])
 	return 0;
 }
 
+static int cmd_udp_ack(const struct shell *shell, int argc, char *argv[])
+{
+	if (argc == 1) {
+		shell_info(shell, "Udp ack mode %s",
+			zperf_echo_mode_enabled() ? "on" : "off");
+	} else if (argc == 2) {
+		if (strcmp("on", argv[1]) == 0) {
+			zperf_ack_switch(true);
+		} else if (strcmp("off", argv[1]) == 0) {
+			zperf_ack_switch(false);
+		} else {
+			shell_error(shell, "Invalid argument.");
+			return -EINVAL;
+		}
+	} else {
+		shell_error(shell, "Invalid number of arguments.");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(zperf_cmd_tcp,
 	SHELL_CMD(upload, NULL,
 		  "<dest ip> <dest port> <duration> <packet size>[K]\n"
@@ -1231,10 +1253,17 @@ SHELL_STATIC_SUBCMD_SET_CREATE(zperf_cmd_udp,
 		  "Example: udp download 5001\n",
 		  cmd_udp_download),
 	SHELL_CMD(echo, NULL,
-		  "Enable/Disable echo mode. Once enabled, uploader won't send next"
-		  " packet unless echo isn't received from the receiver.\n"
+		  "Enable/Disable echo mode. Once enabled, uploader waits for an echo"
+		  " packet up to 250 msec. The next packet is send only if echo"
+		  " is received or the timeout occures.\n"
 		  "zperf udp echo [on|off]\n",
 		  cmd_udp_echo),
+	SHELL_CMD(ack, NULL,
+		  "Enable/Disable ack mode. Once enabled, uploader waits for an ack"
+		  " packet up to 250 msec. The next packet is send only if ack"
+		  " is received or the timeout occures.\n"
+		  "zperf udp echo [on|off]\n",
+		  cmd_udp_ack),
 	SHELL_SUBCMD_SET_END
 );
 

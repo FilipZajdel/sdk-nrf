@@ -38,7 +38,7 @@
 #define PACKET_SIZE_MAX      1024
 #define ZPERF_ECHO_FLAG      (1U<<1)
 #define ZPERF_ACK_FLAG		 (1U<<0)
-#define ZPERF_ECHO_TIMEOUT_MS (100)
+#define ZPERF_ECHO_TIMEOUT_MS (250)
 
 #define ZPERF_CLIENT_HDR_V1_ID      (0U)
 #define ZPERF_SERVER_HDR_ID	        (1U)
@@ -87,19 +87,6 @@ struct zperf_server_hdr {
 	int32_t datagrams;
 	int32_t jitter1;
 	int32_t jitter2;
-};
-
-enum zperf_test_modes {
-	/* The client sends consecutive packets as fast as possible. */
-	ZPERF_MODE_UNIDIRECTIONAL = 0U,
-
-	/* The client sends consecutive packets as soon as previous are
-	   akcnowledged. */
-	ZPERF_MODE_ACK = 0x1U,
-
-	/* The server responds to the client with the data of the same length as
-	   received. */
-	ZPERF_MODE_ECHO = 0x2U
 };
 
 struct echo_context {

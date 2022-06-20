@@ -21,6 +21,7 @@ LOG_MODULE_DECLARE(net_zperf_sample, LOG_LEVEL_DBG);
 
 static char sample_packet[PACKET_SIZE_MAX];
 static bool echo_enabled;
+static bool ack_enabled;
 
 void zperf_tcp_upload(const struct shell *shell,
 		      struct net_context *ctx,
@@ -121,7 +122,25 @@ bool zperf_echo_mode_enabled(void)
 	return echo_enabled;
 }
 
+bool zperf_ack_mode_enabled(void)
+{
+	return ack_enabled;
+}
+
 void zperf_echo_switch(bool enabled)
 {
 	echo_enabled = enabled;
+
+	if (echo_enabled) {
+		zperf_ack_switch(false);
+	}
+}
+
+void zperf_ack_switch(bool enabled)
+{
+	ack_enabled = enabled;
+
+	if (ack_enabled) {
+		zperf_echo_switch(false);
+	}
 }

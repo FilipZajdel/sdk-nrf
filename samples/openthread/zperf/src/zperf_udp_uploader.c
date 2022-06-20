@@ -157,7 +157,7 @@ static inline void zperf_upload_fin(const struct shell *shell,
 	}
 }
 
-static void echo_received(struct net_context *context,
+static void reply_received(struct net_context *context,
 			  struct net_pkt *pkt,
 			  union net_ip_header *ip_hdr,
 			  union net_proto_header *proto_hdr,
@@ -176,6 +176,21 @@ static void echo_received(struct net_context *context,
 	}
 
 	if (echo_ctx->id_to_ack != udp_hdr->id) {
+		printk("Wrong id acked (%u) != (%u)\n", echo_ctx->id_to_ack, udp_hdr->id);
+		goto out;
+	}
+
+	if (zperf_echo_mode_enabled()) {
+		if (!udp_hdr->flags.echo) {
+			printk("echo flag not set\n");
+			goto out;
+		}
+	} else if (zperf_ack_mode_enabled()) {
+		if (!udp_hdr->flags.ack) {
+			printk("ack flag not set\n");
+			goto out;
+		}
+	} else {
 		goto out;
 	}
 
@@ -282,13 +297,28 @@ void zperf_udp_upload(const struct shell *shell,
 		/* Fill the packet header */
 		datagram = (struct zperf_udp_datagram *)sample_packet;
 
-		datagram->id = htonl(nb_packets);
-		// datagram->tv_sec = htonl(secs);
-		// datagram->tv_usec = htonl(usecs);
+		if (IS_ENABLED(CONFIG_ZPERF_HACKED)) {
+			datagram->id = (int8_t)nb_packets;
+		} else {
+			datagram->id = htonl(nb_packets);
+		}
+
+#if !CONFIG_ZPERF_HACKED
+		datagram->tv_sec = htonl(secs);
+		datagram->tv_usec = htonl(usecs);
+#else
+		memset(&datagram->flags, 0, sizeof(datagram->flags));
+
+		if (zperf_echo_mode_enabled()) {
+			datagram->flags.echo_req = 1;
+		} else if (zperf_ack_mode_enabled()) {
+			datagram->flags.ack_req = 1;
+		}
+#endif
 
 		hdr = (struct zperf_client_hdr_v1 *)(sample_packet +
 						     sizeof(*datagram));
-		hdr->flags = zperf_echo_mode_enabled() ? ZPERF_ECHO_FLAG : 0U;
+		hdr->flags = 0U;
 		hdr->num_of_threads = htonl(1);
 		hdr->port = htonl(port);
 		hdr->buffer_len = sizeof(sample_packet) -
@@ -296,8 +326,6 @@ void zperf_udp_upload(const struct shell *shell,
 		hdr->bandwidth = htonl(rate_in_kbps);
 		hdr->num_of_bytes = htonl(packet_size);
 
-		echo_ctx.id_to_ack = htonl(nb_packets);
-		echo_ctx.send_time = k_uptime_ticks();
 		/* Send the packet */
 		ret = net_context_send(context, sample_packet, packet_size,
 				       NULL, K_NO_WAIT, NULL);
@@ -307,16 +335,27 @@ void zperf_udp_upload(const struct shell *shell,
 				      ret);
 			break;
 		} else {
-			nb_packets = zperf_get_next_packet_id(nb_packets);
-		}
 
-		if (zperf_echo_mode_enabled()) {
-			int ret = net_context_recv(context, echo_received,
-							 K_MSEC(ZPERF_ECHO_TIMEOUT_MS),
-							 &echo_ctx);
-			if (ret == -ETIMEDOUT) {
-				LOG_ERR("didn't receive an echo");
+			if (zperf_echo_mode_enabled()
+				|| zperf_ack_mode_enabled()) {
+				int ret;
+
+				if (IS_ENABLED(CONFIG_ZPERF_HACKED))
+					echo_ctx.id_to_ack = nb_packets;
+				else {
+					echo_ctx.id_to_ack = htonl(nb_packets);
+				}
+				echo_ctx.send_time = k_uptime_ticks();
+
+				ret = net_context_recv(context, reply_received,
+								K_MSEC(ZPERF_ECHO_TIMEOUT_MS),
+								&echo_ctx);
+				if (ret == -ETIMEDOUT) {
+					LOG_ERR("didn't receive an echo");
+				}
 			}
+
+			nb_packets = zperf_get_next_packet_id(nb_packets);
 		}
 
 		/* Print log every seconds */

@@ -26,6 +26,12 @@ LOG_MODULE_DECLARE(net_zperf_sample, LOG_LEVEL_DBG);
 #define NET_LOG_ENABLED 1
 #include "net_private.h"
 
+enum zperf_udp_reply_type {
+	UDP_REPLY_ECHO,
+	UDP_REPLY_ACK,
+	UDP_REPLY_FIN
+};
+
 static struct sockaddr_in6 *in6_addr_my;
 static struct sockaddr_in *in4_addr_my;
 
@@ -75,14 +81,6 @@ static inline void build_reply(struct zperf_udp_datagram *hdr,
 	stat_hdr->jitter2 = htonl(stat->jitter2);
 }
 
-static inline uint32_t build_echo_reply(struct zperf_udp_datagram *hdr,
-										uint8_t *buf)
-{
-	memcpy(buf, hdr, sizeof(struct zperf_udp_datagram));
-
-	return sizeof(struct zperf_udp_datagram);
-}
-
 /* Send statistics to the remote client */
 #define BUF_SIZE sizeof(struct zperf_udp_datagram) +	\
 	sizeof(struct zperf_server_hdr)
@@ -120,24 +118,45 @@ static int zperf_receiver_send_stat(const struct shell *shell,
 	return ret;
 }
 
-static void udp_send_echo(const struct shell *shell,
+static void udp_reply(const struct shell *shell,
 				    struct net_context *context,
 				    struct net_pkt *pkt,
 				    union net_ip_header *ip_hdr,
 				    struct net_udp_hdr *udp_hdr,
 				    struct zperf_udp_datagram *hdr,
-					int32_t data_len)
+					enum zperf_udp_reply_type reply_type)
 {
 	uint8_t reply[BUF_SIZE*2];
 	struct sockaddr dst_addr;
+	struct zperf_udp_datagram echo_hdr;
+	size_t len = 0;
 	int ret;
+
+#if CONFIG_ZPERF_HACKED
+	echo_hdr.id = hdr->id;
+	memset(&echo_hdr.flags, 0, sizeof(echo_hdr.flags));
+
+	if (reply_type == UDP_REPLY_ECHO) {
+		len = zperf_get_udp_len(udp_hdr);
+		echo_hdr.flags.echo = 1;
+	} else if (reply_type == UDP_REPLY_ACK) {
+		len = sizeof(*hdr);
+		echo_hdr.flags.ack = 1;
+	} else if (reply_type == UDP_REPLY_FIN) {
+		len = sizeof(*hdr);
+		echo_hdr.flags.fin = 1;
+	}
+#else
+	memcpy(&echo_hdr, hdr, sizeof(*hdr));
+	len = BUF_SIZE;
+#endif
 
 	set_dst_addr(shell, net_pkt_family(pkt),
 		     pkt, ip_hdr, udp_hdr, &dst_addr);
 
-	build_echo_reply(hdr, reply);
+	memcpy(reply, &echo_hdr, sizeof(*hdr));
 
-	ret = net_context_sendto(context, reply, data_len, &dst_addr,
+	ret = net_context_sendto(context, reply, len, &dst_addr,
 				 net_pkt_family(pkt) == AF_INET6 ?
 				 sizeof(struct sockaddr_in6) :
 				 sizeof(struct sockaddr_in),
@@ -159,7 +178,8 @@ static void udp_received(struct net_context *context,
 	NET_PKT_DATA_ACCESS_DEFINE(zperf_client, struct zperf_client_hdr_v1);
 	struct net_udp_hdr *udp_hdr = proto_hdr->udp;
 	const struct shell *shell = user_data;
-	bool echo = false;
+	bool echo_request = false;
+	bool ack_request = false;
 	struct zperf_udp_datagram *hdr;
 	struct zperf_client_hdr_v1 *client_hdr;
 	struct session *session;
@@ -185,11 +205,6 @@ static void udp_received(struct net_context *context,
 	net_pkt_acknowledge_data(pkt, &zperf);
 	client_hdr = (struct zperf_client_hdr_v1 *)
 		net_pkt_get_data(pkt, &zperf_client);
-	if (client_hdr) {
-		echo = !!(client_hdr->flags & ZPERF_ECHO_FLAG);
-	} else {
-		printk("No zperf client header!!\n");
-	}
 
 	time = k_uptime_ticks();
 
@@ -202,6 +217,9 @@ static void udp_received(struct net_context *context,
 
 	if (IS_ENABLED(CONFIG_ZPERF_HACKED)) {
 		id = hdr->id;
+
+		echo_request = (bool)hdr->flags.echo_req;
+		ack_request = (bool)hdr->flags.ack_req;
 	} else {
 		id = ntohl(hdr->id);
 	}
@@ -344,13 +362,17 @@ static void udp_received(struct net_context *context,
 				session->next_id = zperf_get_next_packet_id(session->next_id);
 			}
 
-			if (echo) {
-				printk("(packet id: %u) (len: %u) (header size: %u)\n",
-					id, ntohs(udp_hdr->len) - sizeof(*udp_hdr), sizeof(*hdr));
+			if (echo_request || ack_request) {
+				enum zperf_udp_reply_type reply_type;
 
-				udp_send_echo(shell, context, pkt,
-						      ip_hdr, udp_hdr, hdr,
-							  ntohl(client_hdr->num_of_bytes));
+				if (echo_request) {
+					reply_type = UDP_REPLY_ECHO;
+				} else if (ack_request) {
+					reply_type = UDP_REPLY_ACK;
+				}
+
+				udp_reply(shell, context, pkt,
+						  ip_hdr, udp_hdr, hdr, reply_type);
 			}
 		}
 		break;
