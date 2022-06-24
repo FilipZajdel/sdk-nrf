@@ -31,6 +31,8 @@ manifest:
       url-base: https://github.com/NordicSemiconductor
     - name: memfault
       url-base: https://github.com/memfault
+    - name: filip
+      url-base: https://github.com/FilipZajdel
 
   # If not otherwise specified, the projects below should be obtained
   # from the ncs remote.
@@ -49,8 +51,9 @@ manifest:
     # https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/zephyr/introduction/index.html
     # https://developer.nordicsemi.com/nRF_Connect_SDK/doc/latest/zephyr/guides/modules.html
     - name: zephyr
-      repo-path: sdk-zephyr
-      revision: 85a0034809612b332fbdf478357e8a4109c493fd
+      repo-path: zephyr
+      remote: filip
+      revision: bsim_15_4_support
       import:
         # In addition to the zephyr repository itself, NCS also
         # imports the contents of zephyr/west.yml at the above
@@ -109,7 +112,8 @@ manifest:
     - name: nrfxlib
       repo-path: sdk-nrfxlib
       path: nrfxlib
-      revision: 25902354ab28533affd530d3b51e7315bd54c537
+      revision: bsim_15_4_support
+      remote: filip
     - name: trusted-firmware-m
       repo-path: sdk-trusted-firmware-m
       path: modules/tee/tf-m/trusted-firmware-m
